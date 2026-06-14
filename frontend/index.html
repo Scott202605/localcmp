@@ -11,6 +11,30 @@
   <body>
     <a class="skip-link" href="#main">跳转到主要内容</a>
 
+    <section class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
+      <form class="login-card" id="loginForm">
+        <div class="brand login-brand" aria-label="LocalCMP">
+          <span class="brand-mark" aria-hidden="true">LC</span>
+          <div>
+            <strong>LocalCMP</strong>
+            <span>IoT Control Center</span>
+          </div>
+        </div>
+        <h1 id="loginTitle">登录 CMP 控制台</h1>
+        <label>
+          <span>邮箱</span>
+          <input id="loginEmail" type="email" autocomplete="username" value="13911657767@139.com" required />
+        </label>
+        <label>
+          <span>密码</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <small class="field-error" id="loginError"></small>
+        <button class="primary-button" type="submit">登录</button>
+        <p>开发默认账号：13911657767@139.com / LocalCMP@2026。生产部署前必须修改。</p>
+      </form>
+    </section>
+
     <div class="app-shell">
       <aside class="sidebar" id="sidebar-panel" aria-label="主导航">
         <div class="brand" aria-label="LocalCMP">
@@ -52,9 +76,9 @@
           <button class="icon-button" type="button" aria-label="查看通知">
             <span aria-hidden="true">!</span>
           </button>
-          <button class="user-menu" type="button" aria-label="用户菜单">
+          <button class="user-menu" id="logoutButton" type="button" aria-label="退出登录">
             <span class="avatar" aria-hidden="true">SC</span>
-            <span>Scott</span>
+            <span id="currentUserName">Scott</span>
           </button>
         </header>
 
@@ -92,6 +116,7 @@
       </form>
     </dialog>
 
+    <script src="./config.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>

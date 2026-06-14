@@ -293,6 +293,37 @@ input {
   padding-bottom: 126px;
 }
 
+.system-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #eef7f6;
+  color: var(--accent-strong);
+}
+
+.system-banner span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 0 9px;
+  background: #dff7f3;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.system-banner strong {
+  color: var(--text);
+}
+
+.system-banner small {
+  color: var(--muted);
+}
+
 .page-heading,
 .panel,
 .metric-card {
@@ -559,6 +590,34 @@ h2 {
   font-style: normal;
 }
 
+.secret-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #99f6e4;
+  border-radius: var(--radius);
+  background: #f0fdfa;
+}
+
+.secret-box p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.secret-box code {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+}
+
 .task-list {
   padding: 0;
   margin: 0;
@@ -760,6 +819,58 @@ tbody tr.selected {
 
 .hidden {
   display: none !important;
+}
+
+.login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(37, 99, 235, 0.08)),
+    rgba(246, 248, 251, 0.98);
+}
+
+.login-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  font-size: 26px;
+}
+
+.login-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.login-card label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.login-card p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.login-brand {
+  color: var(--text);
+}
+
+.login-brand strong {
+  color: var(--text);
 }
 
 .privacy-page {

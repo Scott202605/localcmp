@@ -33,11 +33,36 @@ function createSimsService(store, eventBus) {
       error.code = "RESOURCE_INVALID_STATE";
       throw error;
     }
+    if (!["assigned", "reserved"].includes(sim.inventoryStatus)) {
+      const error = new Error(`SIM ${sim.iccid} inventory status ${sim.inventoryStatus} is not operable`);
+      error.statusCode = 409;
+      error.code = "RESOURCE_INVALID_INVENTORY_STATE";
+      throw error;
+    }
     const account = store.find("accounts", sim.accountId);
-    if (!account || account.accountStatus !== "active" || ["credit_hold", "compliance_hold", "fraud_hold"].includes(account.riskStatus)) {
+    if (!account || account.accountStatus !== "active" || account.billingStatus === "bad_debt" || ["credit_hold", "compliance_hold", "fraud_hold"].includes(account.riskStatus)) {
       const error = new Error(`Account ${account?.accountName || sim.accountId} is not eligible for this operation`);
       error.statusCode = 409;
       error.code = "ACCOUNT_RESTRICTED";
+      throw error;
+    }
+    const hasPendingOperation = store
+      .list("simOperations")
+      .some((operation) => operation.simId === sim.id && ["accepted", "validating", "submitted", "processing"].includes(operation.operationStatus));
+    if (hasPendingOperation) {
+      const error = new Error(`SIM ${sim.iccid} already has an operation in progress`);
+      error.statusCode = 409;
+      error.code = "SIM_OPERATION_IN_PROGRESS";
+      throw error;
+    }
+    const pkg = store.find("packages", sim.packageId);
+    const entitlement = store
+      .list("packageEntitlements")
+      .find((item) => item.accountId === sim.accountId && item.packageId === sim.packageId && item.status === "active");
+    if (action === "activate" && (!pkg || pkg.packageStatus !== "active" || !entitlement)) {
+      const error = new Error(`SIM ${sim.iccid} does not have an active package entitlement`);
+      error.statusCode = 409;
+      error.code = "PACKAGE_NOT_ENTITLED";
       throw error;
     }
   }
@@ -45,6 +70,23 @@ function createSimsService(store, eventBus) {
   return {
     list() {
       return store.list("sims").map(enrich);
+    },
+    operations() {
+      return store.list("simOperations").map((operation) => ({
+        ...operation,
+        simIccid: store.find("sims", operation.simId)?.iccid || "-",
+        accountName: accountName(store, operation.accountId),
+      }));
+    },
+    operation(operationId) {
+      const operation = this.operations().find((item) => item.id === operationId);
+      if (!operation) {
+        const error = new Error("SIM operation not found");
+        error.statusCode = 404;
+        error.code = "RESOURCE_NOT_FOUND";
+        throw error;
+      }
+      return operation;
     },
     preview(action, simIds) {
       const targets = store.list("sims").filter((sim) => !simIds?.length || simIds.includes(sim.id) || simIds.includes(sim.iccid));
@@ -63,6 +105,7 @@ function createSimsService(store, eventBus) {
         eligibleCount: eligible.length,
         blockedCount: blocked.length,
         approvalRequired: action === "terminate" || eligible.length > 20,
+        requiresTypedConfirmation: action === "terminate",
         billingImpact: action === "terminate" ? "Final rating and invoice adjustment will be triggered." : "Billing anchor will be preserved.",
         eligible,
         blocked,

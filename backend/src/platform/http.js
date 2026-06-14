@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
+const { createAuthContext, ensureAuthorized } = require("./auth");
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -13,7 +14,7 @@ function sendJson(res, status, payload, correlationId) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Idempotency-Key, X-Correlation-Id",
+    "Access-Control-Allow-Headers": "Content-Type, Idempotency-Key, X-Correlation-Id, X-User-Id, X-Account-Id, Authorization",
     "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
     "X-Correlation-Id": correlationId,
   });
@@ -53,6 +54,7 @@ function createRouter() {
   async function handle(req, res, context) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const correlationId = req.headers["x-correlation-id"] || randomUUID();
+    const auth = createAuthContext(context.services.store, req, url);
 
     if (req.method === "OPTIONS") {
       sendJson(res, 204, { data: null, error: null }, correlationId);
@@ -64,8 +66,9 @@ function createRouter() {
       if (route.method !== req.method || !match) continue;
       const params = Object.fromEntries(route.keys.map((key, index) => [key, decodeURIComponent(match[index + 1])]));
       try {
+        ensureAuthorized(auth, req.method, url.pathname);
         const body = ["POST", "PATCH"].includes(req.method) ? await readBody(req) : {};
-        const data = await route.handler({ req, url, params, body, correlationId, ...context });
+        const data = await route.handler({ req, url, params, body, correlationId, auth, ...context });
         sendJson(res, 200, { data, error: null }, correlationId);
       } catch (error) {
         sendJson(res, error.statusCode || 500, { data: null, error: { code: error.code || "SERVER_ERROR", message: error.message } }, correlationId);

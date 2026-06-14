@@ -53,6 +53,81 @@
       "path": "/platform/reseller-east/evbox-trial"
     }
   ],
+  "users": [
+    {
+      "id": "user_scott",
+      "email": "13911657767@139.com",
+      "phone": "13911657767",
+      "displayName": "Scott",
+      "userType": "human_user",
+      "status": "active",
+      "passwordSalt": "localcmp-dev-salt-user-scott",
+      "passwordHash": "0a0eb7567fc1d6890189e07c5a5512de95f4b0b9e41546063f2cdc71d066225c",
+      "mfaEnabled": true,
+      "lastLoginAt": "2026-06-14T09:30:00+08:00"
+    },
+    {
+      "id": "user_ops",
+      "email": "ops@example.local",
+      "displayName": "Platform Ops",
+      "userType": "human_user",
+      "status": "active",
+      "mfaEnabled": true
+    }
+  ],
+  "roles": [
+    { "id": "role_platform_owner", "roleCode": "platform_owner", "roleName": "Platform Owner", "roleScope": "platform" },
+    { "id": "role_customer_operator", "roleCode": "customer_operator", "roleName": "Customer Operator", "roleScope": "tenant" },
+    { "id": "role_customer_finance", "roleCode": "customer_finance", "roleName": "Customer Finance", "roleScope": "tenant" },
+    { "id": "role_viewer", "roleCode": "viewer", "roleName": "Viewer", "roleScope": "tenant" }
+  ],
+  "permissions": [
+    { "id": "perm_all", "permissionCode": "*", "description": "Platform super administrator permission" },
+    { "id": "perm_dashboard_read", "permissionCode": "dashboard.read", "description": "Read dashboard and analytics" },
+    { "id": "perm_account_read", "permissionCode": "account.read", "description": "Read account tree and account details" },
+    { "id": "perm_account_manage", "permissionCode": "account.manage", "description": "Manage account lifecycle" },
+    { "id": "perm_user_read", "permissionCode": "user.read", "description": "Read users and assignments" },
+    { "id": "perm_user_manage", "permissionCode": "user.manage", "description": "Manage users and invitations" },
+    { "id": "perm_permission_read", "permissionCode": "permission.read", "description": "Read roles and permissions" },
+    { "id": "perm_sim_read", "permissionCode": "sim.read", "description": "Read SIM inventory and service state" },
+    { "id": "perm_sim_operate", "permissionCode": "sim.operate", "description": "Operate SIM lifecycle" },
+    { "id": "perm_package_read", "permissionCode": "package.read", "description": "Read packages and subscriptions" },
+    { "id": "perm_package_manage", "permissionCode": "package.manage", "description": "Manage packages and rate plans" },
+    { "id": "perm_usage_read", "permissionCode": "usage.read", "description": "Read usage and CDR data" },
+    { "id": "perm_usage_import", "permissionCode": "usage.import", "description": "Import and normalize supplier CDR records" },
+    { "id": "perm_billing_read", "permissionCode": "billing.read", "description": "Read invoices and billing details" },
+    { "id": "perm_billing_manage", "permissionCode": "billing.manage", "description": "Run billing jobs and send invoices" },
+    { "id": "perm_batch_read", "permissionCode": "batch.read", "description": "Read batch jobs" },
+    { "id": "perm_batch_manage", "permissionCode": "batch.manage", "description": "Create and execute batch jobs" },
+    { "id": "perm_approval_read", "permissionCode": "approval.read", "description": "Read approval requests" },
+    { "id": "perm_approval_decide", "permissionCode": "approval.decide", "description": "Approve or reject approval requests" },
+    { "id": "perm_integration_read", "permissionCode": "integration.read", "description": "Read API clients, webhooks and delivery logs" },
+    { "id": "perm_integration_manage", "permissionCode": "integration.manage", "description": "Manage API clients and webhook subscriptions" },
+    { "id": "perm_settings_read", "permissionCode": "settings.read", "description": "Read system settings" },
+    { "id": "perm_account_create_child", "permissionCode": "account.create_child", "description": "Create child account" },
+    { "id": "perm_audit_read", "permissionCode": "audit.read", "description": "Read audit logs" }
+  ],
+  "userAccounts": [
+    { "userId": "user_scott", "accountId": "acc_root", "scopeType": "subtree", "status": "active" },
+    { "userId": "user_ops", "accountId": "acc_reseller_east", "scopeType": "subtree", "status": "active" }
+  ],
+  "userRoles": [
+    { "userId": "user_scott", "roleId": "role_platform_owner", "accountId": "acc_root" },
+    { "userId": "user_ops", "roleId": "role_customer_operator", "accountId": "acc_reseller_east" }
+  ],
+  "rolePermissions": [
+    { "roleId": "role_platform_owner", "permissionId": "perm_all" },
+    { "roleId": "role_platform_owner", "permissionId": "perm_sim_read" },
+    { "roleId": "role_platform_owner", "permissionId": "perm_sim_operate" },
+    { "roleId": "role_platform_owner", "permissionId": "perm_package_manage" },
+    { "roleId": "role_platform_owner", "permissionId": "perm_billing_read" },
+    { "roleId": "role_platform_owner", "permissionId": "perm_account_create_child" },
+    { "roleId": "role_platform_owner", "permissionId": "perm_audit_read" },
+    { "roleId": "role_customer_operator", "permissionId": "perm_sim_read" },
+    { "roleId": "role_customer_operator", "permissionId": "perm_sim_operate" },
+    { "roleId": "role_customer_finance", "permissionId": "perm_billing_read" },
+    { "roleId": "role_viewer", "permissionId": "perm_sim_read" }
+  ],
   "suppliers": [
     {
       "id": "sup_global_roam",
@@ -121,6 +196,70 @@
       "billingStartType": "calendar_month",
       "poolEnabled": false,
       "authorizedAccounts": 8
+    }
+  ],
+  "packageEntitlements": [
+    {
+      "id": "ent_reseller_global",
+      "accountId": "acc_reseller_east",
+      "packageId": "pkg_global_5gb",
+      "status": "active",
+      "canResell": true,
+      "priceFloorAmount": 3000,
+      "currency": "CNY"
+    },
+    {
+      "id": "ent_fleetlink_global",
+      "accountId": "acc_fleetlink",
+      "packageId": "pkg_global_5gb",
+      "status": "active",
+      "canResell": false,
+      "priceFloorAmount": 3500,
+      "currency": "CNY"
+    },
+    {
+      "id": "ent_evbox_apac",
+      "accountId": "acc_evbox",
+      "packageId": "pkg_apac_pool",
+      "status": "active",
+      "canResell": false,
+      "priceFloorAmount": 120000,
+      "currency": "CNY"
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "sub_1842",
+      "accountId": "acc_fleetlink",
+      "simId": "sim_1842",
+      "packageId": "pkg_global_5gb",
+      "status": "active",
+      "billingAnchorAt": "2026-06-01T00:00:00+08:00",
+      "autoRenew": true
+    },
+    {
+      "id": "sub_1916",
+      "accountId": "acc_evbox",
+      "simId": "sim_1916",
+      "packageId": "pkg_apac_pool",
+      "status": "suspended",
+      "billingAnchorAt": "2026-06-10T00:00:00+08:00",
+      "autoRenew": true,
+      "poolId": "pool_evbox_apac"
+    }
+  ],
+  "usagePools": [
+    {
+      "id": "pool_evbox_apac",
+      "accountId": "acc_evbox",
+      "packageId": "pkg_apac_pool",
+      "name": "EVBox APAC Shared Pool",
+      "quotaBytes": 536870912000,
+      "usedBytes": 281320357888,
+      "cycleStartAt": "2026-06-01T00:00:00+08:00",
+      "cycleEndAt": "2026-06-30T23:59:59+08:00",
+      "resetPolicy": "calendar_month",
+      "overagePolicy": "throttle"
     }
   ],
   "sims": [
@@ -260,6 +399,20 @@
       "createdBy": "system"
     }
   ],
+  "batchJobItems": [],
+  "approvalRequests": [
+    {
+      "id": "approval_pkg_change_9021",
+      "requestType": "bulk_package_change",
+      "status": "pending",
+      "requestedBy": "user_ops",
+      "approverId": "user_scott",
+      "impactCount": 86,
+      "riskSummary": "Bulk package change affects 86 active SIM subscriptions.",
+      "correlationId": "corr_pkg_9021",
+      "createdAt": "2026-06-14T09:50:00+08:00"
+    }
+  ],
   "apiClients": [
     {
       "id": "client_fleetlink_prod",
@@ -267,6 +420,8 @@
       "clientName": "fleetlink-prod",
       "scopes": ["sim.read", "sim.operate", "usage.read"],
       "status": "active",
+      "secretPreview": "cmp_sk_12...f4a9",
+      "clientSecretHash": "seeded_hash_not_for_production",
       "lastUsedAt": "2026-06-14T09:40:00+08:00"
     },
     {
@@ -275,7 +430,49 @@
       "clientName": "evbox-test",
       "scopes": ["usage.read"],
       "status": "suspended",
+      "secretPreview": "cmp_sk_89...0b21",
+      "clientSecretHash": "seeded_hash_not_for_production",
       "lastUsedAt": "2026-06-11T11:30:00+08:00"
+    }
+  ],
+  "webhookSubscriptions": [
+    {
+      "id": "wh_fleetlink_ops",
+      "accountId": "acc_fleetlink",
+      "targetUrl": "https://api.fleetlink.example/webhooks/cmp",
+      "eventTypes": ["sim.activated", "sim.suspended", "invoice.issued"],
+      "status": "active",
+      "signingSecretPreview": "whsec_a1...91de",
+      "signingSecretHash": "seeded_hash_not_for_production",
+      "retryPolicy": "exponential_24h",
+      "lastDeliveryStatus": "succeeded",
+      "lastDeliveredAt": "2026-06-14T09:38:00+08:00"
+    },
+    {
+      "id": "wh_evbox_usage",
+      "accountId": "acc_evbox",
+      "targetUrl": "https://evbox.example/iot/cmp/events",
+      "eventTypes": ["usage.threshold_reached", "invoice.issued"],
+      "status": "paused",
+      "signingSecretPreview": "whsec_f9...02ad",
+      "signingSecretHash": "seeded_hash_not_for_production",
+      "retryPolicy": "linear_6h",
+      "lastDeliveryStatus": "failed",
+      "lastDeliveredAt": "2026-06-13T18:30:00+08:00"
+    }
+  ],
+  "notificationDeliveries": [
+    {
+      "id": "delivery_001",
+      "accountId": "acc_fleetlink",
+      "subscriptionId": "wh_fleetlink_ops",
+      "eventId": "evt_sim_1842",
+      "eventType": "sim.activated",
+      "targetUrl": "https://api.fleetlink.example/webhooks/cmp",
+      "status": "succeeded",
+      "attemptCount": 1,
+      "correlationId": "corr_webhook_001",
+      "createdAt": "2026-06-14T09:36:00+08:00"
     }
   ],
   "auditLogs": [
@@ -291,5 +488,6 @@
       "createdAt": "2026-06-14T09:42:00+08:00"
     }
   ],
+  "simOperations": [],
   "outboxEvents": []
 }

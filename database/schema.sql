@@ -14,6 +14,7 @@ CREATE SCHEMA IF NOT EXISTS billing;
 CREATE SCHEMA IF NOT EXISTS operation;
 CREATE SCHEMA IF NOT EXISTS integration;
 CREATE SCHEMA IF NOT EXISTS audit;
+CREATE SCHEMA IF NOT EXISTS runtime;
 
 CREATE TABLE IF NOT EXISTS account.accounts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -84,11 +85,29 @@ CREATE TABLE IF NOT EXISTS identity.user_roles (
   PRIMARY KEY (user_id, role_id, account_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON identity.user_roles(role_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_account ON identity.user_roles(account_id);
+
 CREATE TABLE IF NOT EXISTS identity.role_permissions (
   role_id uuid NOT NULL REFERENCES identity.roles(id),
   permission_id uuid NOT NULL REFERENCES identity.permissions(id),
   PRIMARY KEY (role_id, permission_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_role_permissions_permission ON identity.role_permissions(permission_id);
+
+CREATE TABLE IF NOT EXISTS identity.support_access_grants (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  support_user_id uuid NOT NULL REFERENCES identity.users(id),
+  account_id uuid NOT NULL REFERENCES account.accounts(id),
+  reason text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'revoked')),
+  approved_by uuid REFERENCES identity.users(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_access_account ON identity.support_access_grants(account_id, status, expires_at);
 
 CREATE TABLE IF NOT EXISTS resource.suppliers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -149,6 +168,23 @@ CREATE TABLE IF NOT EXISTS product.rate_plans (
   status text NOT NULL CHECK (status IN ('draft', 'scheduled', 'effective', 'expired', 'cancelled')),
   UNIQUE (package_id, version)
 );
+
+CREATE INDEX IF NOT EXISTS idx_rate_plans_package_status ON product.rate_plans(package_id, status, effective_from DESC);
+
+CREATE TABLE IF NOT EXISTS product.package_entitlements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES account.accounts(id),
+  package_id uuid NOT NULL REFERENCES product.packages(id),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'revoked')),
+  can_resell boolean NOT NULL DEFAULT false,
+  price_floor_amount numeric(18, 4),
+  currency char(3) NOT NULL DEFAULT 'CNY',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (account_id, package_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_package_entitlements_package ON product.package_entitlements(package_id, status);
+CREATE INDEX IF NOT EXISTS idx_package_entitlements_account ON product.package_entitlements(account_id, status);
 
 CREATE TABLE IF NOT EXISTS inventory.sims (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -226,6 +262,28 @@ CREATE TABLE IF NOT EXISTS product.subscriptions (
   auto_renew boolean NOT NULL DEFAULT true
 );
 
+CREATE INDEX IF NOT EXISTS idx_subscriptions_account_status ON product.subscriptions(account_id, status);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_sim_status ON product.subscriptions(sim_id, status);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_package ON product.subscriptions(package_id);
+
+CREATE TABLE IF NOT EXISTS product.usage_pools (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES account.accounts(id),
+  package_id uuid NOT NULL REFERENCES product.packages(id),
+  name text NOT NULL,
+  quota_bytes bigint NOT NULL,
+  used_bytes bigint NOT NULL DEFAULT 0,
+  cycle_start_at timestamptz NOT NULL,
+  cycle_end_at timestamptz NOT NULL,
+  reset_policy text NOT NULL,
+  overage_policy text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_pools_account_cycle ON product.usage_pools(account_id, cycle_start_at, cycle_end_at);
+CREATE INDEX IF NOT EXISTS idx_usage_pools_package ON product.usage_pools(package_id);
+
 CREATE TABLE IF NOT EXISTS operation.sim_operations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid NOT NULL REFERENCES account.accounts(id),
@@ -244,6 +302,7 @@ CREATE TABLE IF NOT EXISTS operation.sim_operations (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sim_operations_idempotency ON operation.sim_operations(sim_id, operation_type, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sim_operations_account_status ON operation.sim_operations(account_id, operation_status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS operation.esim_operations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -364,26 +423,81 @@ CREATE TABLE IF NOT EXISTS operation.batch_jobs (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS idx_batch_jobs_account_status ON operation.batch_jobs(account_id, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS operation.approval_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_type text NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+  requested_by uuid REFERENCES identity.users(id),
+  approver_id uuid REFERENCES identity.users(id),
+  impact_count int NOT NULL DEFAULT 0,
+  risk_summary text,
+  request_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  decision_comment text,
+  correlation_id text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  decided_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON operation.approval_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_requests_approver ON operation.approval_requests(approver_id, status);
+
 CREATE TABLE IF NOT EXISTS integration.api_clients (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid NOT NULL REFERENCES account.accounts(id),
   client_name text NOT NULL,
   scopes text[] NOT NULL DEFAULT '{}',
-  status text NOT NULL DEFAULT 'active',
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'revoked')),
   secret_hash text,
+  secret_preview text,
+  created_by uuid REFERENCES identity.users(id),
   last_used_at timestamptz,
+  rotated_at timestamptz,
+  suspended_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_clients_account_name ON integration.api_clients(account_id, client_name);
+CREATE INDEX IF NOT EXISTS idx_api_clients_account_status ON integration.api_clients(account_id, status);
 
 CREATE TABLE IF NOT EXISTS integration.webhook_subscriptions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id uuid NOT NULL REFERENCES account.accounts(id),
+  event_types text[] NOT NULL DEFAULT '{}',
+  target_url text NOT NULL,
+  signing_secret_hash text NOT NULL,
+  signing_secret_preview text,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'deleted')),
+  retry_policy text NOT NULL DEFAULT 'exponential_24h',
+  created_by uuid REFERENCES identity.users(id),
+  last_delivery_status text,
+  last_delivered_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_account_status ON integration.webhook_subscriptions(account_id, status);
+CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_events ON integration.webhook_subscriptions USING gin(event_types);
+
+CREATE TABLE IF NOT EXISTS integration.notification_deliveries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES account.accounts(id),
+  subscription_id uuid REFERENCES integration.webhook_subscriptions(id),
+  event_id uuid NOT NULL,
   event_type text NOT NULL,
   target_url text NOT NULL,
-  signing_secret_ref text NOT NULL,
-  status text NOT NULL DEFAULT 'active',
-  retry_policy jsonb
+  status text NOT NULL CHECK (status IN ('queued', 'sending', 'succeeded', 'failed', 'dead_letter')),
+  attempt_count int NOT NULL DEFAULT 0,
+  response_status int,
+  error_message text,
+  correlation_id text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  delivered_at timestamptz
 );
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_account_time ON integration.notification_deliveries(account_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status ON integration.notification_deliveries(status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS operation.outbox_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -414,3 +528,65 @@ CREATE TABLE IF NOT EXISTS audit.audit_logs (
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_account_time ON audit.audit_logs(account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit.audit_logs(resource_type, resource_id);
+
+-- Supabase/Postgres security baseline.
+CREATE TABLE IF NOT EXISTS runtime.collection_items (
+  collection text NOT NULL,
+  id text NOT NULL,
+  data jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (collection, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON runtime.collection_items(collection);
+
+ALTER TABLE account.accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory.sims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product.packages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product.subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE billing.invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit.audit_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION identity.current_account_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT NULLIF(current_setting('app.current_account_id', true), '')::uuid
+$$;
+
+CREATE OR REPLACE FUNCTION identity.can_access_account(target_account_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM account.accounts current_account
+    JOIN account.accounts target_account ON target_account.path LIKE current_account.path || '%'
+    WHERE current_account.id = identity.current_account_id()
+      AND target_account.id = target_account_id
+  )
+$$;
+
+DROP POLICY IF EXISTS account_tree_read ON account.accounts;
+CREATE POLICY account_tree_read ON account.accounts
+  FOR SELECT
+  USING ((SELECT identity.can_access_account(id)));
+
+DROP POLICY IF EXISTS sims_account_tree_read ON inventory.sims;
+CREATE POLICY sims_account_tree_read ON inventory.sims
+  FOR SELECT
+  USING ((SELECT identity.can_access_account(account_id)));
+
+DROP POLICY IF EXISTS subscriptions_account_tree_read ON product.subscriptions;
+CREATE POLICY subscriptions_account_tree_read ON product.subscriptions
+  FOR SELECT
+  USING ((SELECT identity.can_access_account(account_id)));
+
+DROP POLICY IF EXISTS invoices_account_tree_read ON billing.invoices;
+CREATE POLICY invoices_account_tree_read ON billing.invoices
+  FOR SELECT
+  USING ((SELECT identity.can_access_account(account_id)));

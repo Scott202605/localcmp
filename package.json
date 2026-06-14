@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "LocalCMP modular monolith prototype",
+  "dependencies": {
+    "pg": "^8.12.0"
+  },
   "scripts": {
     "start": "node backend/src/server.js",
-    "check": "node --check backend/src/server.js && node --check frontend/app.js"
+    "check": "node --check backend/src/server.js && node --check backend/src/routes.js && node --check backend/src/modules/catalog.js && node --check backend/src/modules/sims.js && node --check backend/src/modules/integration.js && node --check frontend/app.js",
+    "smoke": "node scripts/smoke-test.js"
   }
 }

@@ -1,0 +1,198 @@
+openapi: 3.1.0
+info:
+  title: LocalCMP API
+  version: 0.1.0
+  description: Phase-1 modular monolith API for IoT CMP account, SIM, package, usage, billing, batch and integration workflows.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    Envelope:
+      type: object
+      properties:
+        request_id:
+          type: string
+        correlation_id:
+          type: string
+        data: {}
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/Error"
+            - type: "null"
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service health
+  /auth/context:
+    get:
+      summary: Current user, account and permissions
+      responses:
+        "200":
+          description: Current authorization context
+  /auth/login:
+    post:
+      summary: Login with email and password
+      security: []
+      responses:
+        "200":
+          description: Bearer JWT token
+  /sims:
+    get:
+      summary: List SIM inventory
+      responses:
+        "200":
+          description: SIM list
+  /sims/operation-preview:
+    post:
+      summary: Preview SIM lifecycle operation
+      responses:
+        "200":
+          description: Impact preview
+  /sim-operations:
+    get:
+      summary: List SIM operations
+      responses:
+        "200":
+          description: SIM operation records
+  /sim-operations/{operation_id}:
+    get:
+      summary: Get SIM operation detail
+      parameters:
+        - name: operation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SIM operation detail
+  /sims/{sim_id}/{action}:
+    post:
+      summary: Run SIM lifecycle operation
+      parameters:
+        - name: sim_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [activate, suspend, resume, terminate]
+      responses:
+        "200":
+          description: Operation accepted
+  /cdrs/import:
+    post:
+      summary: Import and normalize supplier CDR records
+      responses:
+        "200":
+          description: Normalization result
+  /esim-profiles/{profile_id}/{action}:
+    post:
+      summary: Run eSIM profile operation
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [allocate, enable, disable, release]
+      responses:
+        "200":
+          description: eSIM operation accepted
+  /esim-operations:
+    get:
+      summary: List eSIM operations
+      responses:
+        "200":
+          description: eSIM operation records
+  /api-clients:
+    get:
+      summary: List API clients
+      responses:
+        "200":
+          description: API clients
+    post:
+      summary: Create API client
+      responses:
+        "200":
+          description: Created client with one-time secret
+  /api-clients/{client_id}/rotate:
+    post:
+      summary: Rotate API client secret
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rotated client with one-time secret
+  /api-clients/{client_id}/suspend:
+    post:
+      summary: Suspend API client
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Suspended client
+  /webhook-subscriptions:
+    get:
+      summary: List webhook subscriptions
+      responses:
+        "200":
+          description: Webhook subscriptions
+    post:
+      summary: Create webhook subscription
+      responses:
+        "200":
+          description: Created subscription with one-time signing secret
+  /webhook-subscriptions/{subscription_id}/test:
+    post:
+      summary: Queue test webhook delivery
+      parameters:
+        - name: subscription_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test delivery queued
+  /notification-deliveries:
+    get:
+      summary: List notification and webhook deliveries
+      responses:
+        "200":
+          description: Delivery records
