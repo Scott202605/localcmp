@@ -17,7 +17,9 @@ const routePermissions = [
   { method: "GET", pattern: /^\/api\/v1\/esim-profiles|^\/api\/v1\/esim-operations/, permission: "sim.read" },
   { method: "POST", pattern: /^\/api\/v1\/esim-profiles/, permission: "sim.operate" },
   { method: "GET", pattern: /^\/api\/v1\/packages|^\/api\/v1\/subscriptions|^\/api\/v1\/usage-pools/, permission: "package.read" },
-  { method: "POST", pattern: /^\/api\/v1\/packages|^\/api\/v1\/subscriptions/, permission: "package.manage" },
+  { method: "POST", pattern: /^\/api\/v1\/packages|^\/api\/v1\/subscriptions|^\/api\/v1\/usage-pools/, permission: "package.manage" },
+  { method: "GET", pattern: /^\/api\/v1\/suppliers/, permission: "integration.read" },
+  { method: "POST", pattern: /^\/api\/v1\/suppliers/, permission: "integration.manage" },
   { method: "GET", pattern: /^\/api\/v1\/usage|^\/api\/v1\/cdrs/, permission: "usage.read" },
   { method: "POST", pattern: /^\/api\/v1\/cdrs/, permission: "usage.import" },
   { method: "GET", pattern: /^\/api\/v1\/invoices/, permission: "billing.read" },
@@ -27,7 +29,9 @@ const routePermissions = [
   { method: "GET", pattern: /^\/api\/v1\/approval-requests/, permission: "approval.read" },
   { method: "POST", pattern: /^\/api\/v1\/approval-requests/, permission: "approval.decide" },
   { method: "GET", pattern: /^\/api\/v1\/audit-logs/, permission: "audit.read" },
+  { method: "POST", pattern: /^\/api\/v1\/audit-logs/, permission: "audit.read" },
   { method: "GET", pattern: /^\/api\/v1\/settings/, permission: "settings.read" },
+  { method: "POST", pattern: /^\/api\/v1\/settings/, permission: "settings.read" },
   { method: "GET", pattern: /^\/api\/v1\/api-clients|^\/api\/v1\/webhook-subscriptions|^\/api\/v1\/notification-deliveries/, permission: "integration.read" },
   { method: "POST", pattern: /^\/api\/v1\/api-clients|^\/api\/v1\/webhook-subscriptions/, permission: "integration.manage" },
 ];
@@ -78,12 +82,25 @@ function tokenFromRequest(req) {
   return auth.slice("Bearer ".length);
 }
 
+function isDescendantOrSelf(store, accountId, ancestorId) {
+  if (!accountId || !ancestorId) return false;
+  if (accountId === ancestorId) return true;
+  let current = store.find("accounts", accountId);
+  while (current?.parentAccountId) {
+    if (current.parentAccountId === ancestorId) return true;
+    current = store.find("accounts", current.parentAccountId);
+  }
+  return false;
+}
+
 function createAuthContext(store, req, url) {
   const claims = verifyJwt(tokenFromRequest(req));
   const headerUserId = process.env.ALLOW_HEADER_AUTH === "true" ? req.headers["x-user-id"] : null;
   const userId = claims?.sub || headerUserId;
   const headerAccountId = process.env.ALLOW_HEADER_AUTH === "true" ? req.headers["x-account-id"] : null;
-  const accountId = claims?.accountId || headerAccountId || "acc_root";
+  const rootAccountId = claims?.accountId || headerAccountId || "acc_root";
+  const requestedScopeAccountId = req.headers["x-account-scope-id"];
+  const accountId = requestedScopeAccountId && isDescendantOrSelf(store, requestedScopeAccountId, rootAccountId) ? requestedScopeAccountId : rootAccountId;
   const user = store.find("users", userId);
   const roleIds = store.list("userRoles").filter((item) => item.userId === userId).map((item) => item.roleId);
   const permissionIds = store.list("rolePermissions").filter((item) => roleIds.includes(item.roleId)).map((item) => item.permissionId);

@@ -60,12 +60,9 @@
           </button>
 
           <div class="account-scope">
-            <label for="accountScope">账户范围</label>
-            <select id="accountScope">
-              <option>Platform / All accounts</option>
-              <option>Reseller East / subtree</option>
-              <option>Customer: FleetLink CN</option>
-            </select>
+            <label for="accountScopeSearch">Account scope</label>
+            <input id="accountScopeSearch" list="accountScopeOptions" type="search" autocomplete="off" placeholder="Search account..." />
+            <datalist id="accountScopeOptions"></datalist>
           </div>
 
           <form class="global-search" role="search">

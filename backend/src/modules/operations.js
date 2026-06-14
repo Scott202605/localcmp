@@ -104,15 +104,80 @@ function createOperationsService(store, eventBus) {
     auditLogs() {
       return store.list("auditLogs");
     },
+    exportAuditLogs(body, auth, correlationId) {
+      const logs = store.list("auditLogs");
+      const from = body.from ? new Date(body.from) : null;
+      const to = body.to ? new Date(body.to) : null;
+      const filtered = logs.filter((log) => {
+        const createdAt = new Date(log.createdAt);
+        if (from && createdAt < from) return false;
+        if (to && createdAt > to) return false;
+        if (body.action && !String(log.action).includes(body.action)) return false;
+        if (body.resourceType && log.resourceType !== body.resourceType) return false;
+        return true;
+      });
+      const exportJob = store.insert("auditExports", {
+        id: `audit_export_${Date.now()}`,
+        status: "completed",
+        requestedBy: auth.userId,
+        recordCount: filtered.length,
+        format: body.format || "csv",
+        downloadUrl: `/api/v1/audit-logs/export/${Date.now()}.csv`,
+        correlationId,
+        createdAt: new Date().toISOString(),
+      });
+      store.insert("auditLogs", {
+        id: `audit_export_event_${Date.now()}`,
+        actorType: "user",
+        actorId: auth.userId,
+        action: "audit.exported",
+        resourceType: "audit_log",
+        resourceId: exportJob.id,
+        correlationId,
+        createdAt: new Date().toISOString(),
+      });
+      return { ...exportJob, rows: filtered };
+    },
     outbox() {
       return store.list("outboxEvents");
     },
     settings() {
-      return {
+      const saved = store.find("settings", "platform_settings");
+      return saved || {
+        id: "platform_settings",
         security: { mfaRequiredForAdmins: true, productionHttpsRequired: true, tokenMasking: true },
         sla: { apiAvailability: "99.9%", cdrDelayMinutes: 30, webhookSuccessRate: "99%" },
         retention: { cdrDays: 730, auditDays: 1095 },
       };
+    },
+    updateSettings(body, auth, correlationId) {
+      const current = this.settings();
+      const updated = {
+        ...current,
+        id: "platform_settings",
+        security: { ...current.security, ...(body.security || {}) },
+        sla: { ...current.sla, ...(body.sla || {}) },
+        retention: { ...current.retention, ...(body.retention || {}) },
+        updatedBy: auth.userId,
+        updatedAt: new Date().toISOString(),
+      };
+      if (store.find("settings", "platform_settings")) {
+        store.update("settings", "platform_settings", updated);
+      } else {
+        store.insert("settings", updated);
+      }
+      store.insert("auditLogs", {
+        id: `audit_settings_${Date.now()}`,
+        actorType: "user",
+        actorId: auth.userId,
+        action: "settings.updated",
+        resourceType: "settings",
+        resourceId: "platform_settings",
+        correlationId,
+        createdAt: new Date().toISOString(),
+      });
+      eventBus.publish("settings.updated", "settings", "platform_settings", {}, correlationId);
+      return updated;
     },
   };
 }

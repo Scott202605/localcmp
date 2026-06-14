@@ -228,6 +228,10 @@ a:focus-visible {
   gap: 4px;
 }
 
+.account-scope input {
+  min-width: 240px;
+}
+
 .account-scope label,
 .filters label span,
 .form-grid label span,
@@ -462,6 +466,10 @@ h2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
   gap: 18px;
+}
+
+.module-grid.wide-module {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
 }
 
 .panel {
@@ -731,6 +739,27 @@ tbody tr.selected {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+
+.compact-form {
+  grid-template-columns: 1fr;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.empty-state {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.empty-state p {
+  color: var(--muted);
 }
 
 .field-error {

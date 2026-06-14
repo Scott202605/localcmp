@@ -30,10 +30,14 @@ function registerRoutes(router, services) {
   router.add("GET", "/api/v1/dashboard/overview", ({ services: scoped }) => scoped.analytics.overview());
   router.add("GET", "/api/v1/accounts", ({ services: scoped }) => scoped.accounts.list());
   router.add("GET", "/api/v1/accounts/tree", ({ services: scoped }) => scoped.accounts.tree());
+  router.add("POST", "/api/v1/accounts", ({ services: scoped, body, auth, correlationId }) => scoped.accounts.create(body, auth, correlationId));
+  router.add("GET", "/api/v1/accounts/:accountId", ({ services: scoped, params, auth }) => scoped.accounts.get(params.accountId, auth));
   router.add("POST", "/api/v1/accounts/:accountId/:action", ({ services: scoped, params, correlationId }) => {
     return scoped.accounts.transition(params.accountId, params.action, correlationId);
   });
   router.add("GET", "/api/v1/users", ({ services: scoped }) => scoped.identity.users());
+  router.add("POST", "/api/v1/users", ({ services: scoped, body, auth, correlationId }) => scoped.identity.createUser(body, auth, correlationId));
+  router.add("GET", "/api/v1/users/:userId", ({ services: scoped, params }) => scoped.identity.getUser(params.userId));
   router.add("POST", "/api/v1/users/:userId/deactivate", ({ services: scoped, params, correlationId }) => scoped.identity.deactivateUser(params.userId, correlationId));
   router.add("GET", "/api/v1/roles", ({ services: scoped }) => scoped.identity.roles());
   router.add("GET", "/api/v1/permissions", ({ services: scoped }) => scoped.identity.permissions());
@@ -50,16 +54,21 @@ function registerRoutes(router, services) {
     return scoped.catalog.operateEsim(params.profileId, params.action, body, correlationId);
   });
   router.add("GET", "/api/v1/packages", ({ services: scoped }) => scoped.catalog.packages());
+  router.add("POST", "/api/v1/packages", ({ services: scoped, body, auth, correlationId }) => scoped.catalog.createPackage(body, auth, correlationId));
+  router.add("GET", "/api/v1/packages/:packageId", ({ services: scoped, params }) => scoped.catalog.getPackage(params.packageId));
   router.add("POST", "/api/v1/packages/:packageId/:action", ({ services: scoped, params, correlationId }) => {
     return scoped.catalog.transitionPackage(params.packageId, params.action, correlationId);
   });
   router.add("GET", "/api/v1/package-entitlements", ({ services: scoped }) => scoped.catalog.packageEntitlements());
   router.add("GET", "/api/v1/subscriptions", ({ services: scoped }) => scoped.catalog.subscriptions());
   router.add("GET", "/api/v1/usage-pools", ({ services: scoped }) => scoped.catalog.usagePools());
+  router.add("POST", "/api/v1/usage-pools", ({ services: scoped, body, auth, correlationId }) => scoped.catalog.createUsagePool(body, auth, correlationId));
   router.add("GET", "/api/v1/usage/summary", ({ services: scoped }) => scoped.usage.summary());
   router.add("GET", "/api/v1/cdrs", ({ services: scoped }) => scoped.usage.cdrs());
   router.add("POST", "/api/v1/cdrs/import", ({ services: scoped, body, auth, correlationId }) => scoped.usage.importCdrs(body, auth, correlationId));
   router.add("GET", "/api/v1/suppliers", ({ services: scoped }) => scoped.catalog.suppliers());
+  router.add("GET", "/api/v1/suppliers/:supplierId", ({ services: scoped, params }) => scoped.catalog.getSupplier(params.supplierId));
+  router.add("POST", "/api/v1/suppliers/:supplierId/sync-products", ({ services: scoped, params, auth, correlationId }) => scoped.catalog.syncSupplier(params.supplierId, auth, correlationId));
   router.add("GET", "/api/v1/invoices", ({ services: scoped }) => scoped.billing.invoices());
   router.add("POST", "/api/v1/invoice-runs", ({ services: scoped }) => scoped.billing.runPreview());
   router.add("POST", "/api/v1/invoices/:invoiceId/send", ({ services: scoped, params, auth, correlationId }) => scoped.billing.sendInvoice(params.invoiceId, auth, correlationId));
@@ -80,7 +89,9 @@ function registerRoutes(router, services) {
   router.add("POST", "/api/v1/webhook-subscriptions/:subscriptionId/delete", ({ services: scoped, params, auth, correlationId }) => scoped.integration.deleteWebhookSubscription(params.subscriptionId, auth, correlationId));
   router.add("GET", "/api/v1/notification-deliveries", ({ services: scoped }) => scoped.integration.notificationDeliveries());
   router.add("GET", "/api/v1/settings", ({ services: scoped }) => scoped.operations.settings());
+  router.add("POST", "/api/v1/settings", ({ services: scoped, body, auth, correlationId }) => scoped.operations.updateSettings(body, auth, correlationId));
   router.add("GET", "/api/v1/audit-logs", ({ services: scoped }) => scoped.operations.auditLogs());
+  router.add("POST", "/api/v1/audit-logs/export", ({ services: scoped, body, auth, correlationId }) => scoped.operations.exportAuditLogs(body, auth, correlationId));
   router.add("GET", "/api/v1/outbox-events", ({ services: scoped }) => scoped.operations.outbox());
 
   return router;

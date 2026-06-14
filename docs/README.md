@@ -58,3 +58,9 @@
 - 前端原型：基于页面信息架构制作可交互原型。
 - 架构图：补充部署拓扑、事件流、CDR 流、Billing 流和 eSIM 操作流。
 - 测试方案：补充 CDR、Rating、Billing、eSIM 状态机和权限模型测试用例。
+
+
+## Current Implementation Addendum
+
+- [??????-???????????.md](??????-???????????.md)
+  - Covers the latest account scope search, account/user creation rules, backend Scope Guard, API additions, user workflow, and deployment validation checklist.

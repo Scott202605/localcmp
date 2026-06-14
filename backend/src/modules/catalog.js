@@ -24,6 +24,66 @@ function createCatalogService(store, eventBus) {
         entitlementCount: store.list("packageEntitlements").filter((item) => item.packageId === pkg.id && item.status === "active").length,
       }));
     },
+    getPackage(packageId) {
+      const pkg = this.packages().find((item) => item.id === packageId);
+      if (!pkg) {
+        const error = new Error("Package not found");
+        error.statusCode = 404;
+        error.code = "RESOURCE_NOT_FOUND";
+        throw error;
+      }
+      return {
+        ...pkg,
+        entitlements: this.packageEntitlements().filter((item) => item.packageId === packageId),
+        subscriptions: this.subscriptions().filter((item) => item.packageId === packageId),
+        usagePools: this.usagePools().filter((item) => item.packageId === packageId),
+      };
+    },
+    createPackage(body, auth, correlationId) {
+      const name = String(body.name || "").trim();
+      const packageCode = String(body.packageCode || name)
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      const quotaGb = Number(body.quotaGb || 0);
+      if (!name || !packageCode || quotaGb <= 0) {
+        const error = new Error("name, packageCode and quotaGb are required");
+        error.statusCode = 400;
+        error.code = "VALIDATION_PACKAGE_REQUIRED";
+        throw error;
+      }
+      if (store.list("packages").some((item) => item.packageCode === packageCode)) {
+        const error = new Error("Package code already exists");
+        error.statusCode = 409;
+        error.code = "PACKAGE_CODE_EXISTS";
+        throw error;
+      }
+      const pkg = store.insert("packages", {
+        id: `pkg_${Date.now()}`,
+        packageCode,
+        name,
+        packageType: body.packageType || "data",
+        packageStatus: body.packageStatus || "draft",
+        regionScope: body.regionScope || "Global",
+        quotaBytes: Math.round(quotaGb * 1024 * 1024 * 1024),
+        billingStartType: body.billingStartType || "calendar_month",
+        poolEnabled: body.poolEnabled === true,
+        authorizedAccounts: 0,
+        createdAt: new Date().toISOString(),
+      });
+      store.insert("auditLogs", {
+        id: `audit_package_create_${Date.now()}`,
+        actorType: "user",
+        actorId: auth.userId,
+        action: "package.created",
+        resourceType: "package",
+        resourceId: pkg.id,
+        correlationId,
+        createdAt: new Date().toISOString(),
+      });
+      return this.getPackage(pkg.id);
+    },
     packageEntitlements() {
       return store.list("packageEntitlements").map((item) => ({
         ...item,
@@ -46,6 +106,41 @@ function createCatalogService(store, eventBus) {
         packageName: store.find("packages", item.packageId)?.name || "-",
         usedPercent: item.quotaBytes ? Number(((item.usedBytes / item.quotaBytes) * 100).toFixed(1)) : 0,
       }));
+    },
+    createUsagePool(body, auth, correlationId) {
+      const account = store.find("accounts", body.accountId);
+      const pkg = store.find("packages", body.packageId);
+      const quotaGb = Number(body.quotaGb || 0);
+      if (!account || !pkg || quotaGb <= 0) {
+        const error = new Error("Valid accountId, packageId and quotaGb are required");
+        error.statusCode = 400;
+        error.code = "VALIDATION_USAGE_POOL_REQUIRED";
+        throw error;
+      }
+      const pool = store.insert("usagePools", {
+        id: `pool_${Date.now()}`,
+        accountId: account.id,
+        packageId: pkg.id,
+        name: String(body.name || `${account.accountName} ${pkg.name} Pool`),
+        quotaBytes: Math.round(quotaGb * 1024 * 1024 * 1024),
+        usedBytes: 0,
+        cycleStartAt: body.cycleStartAt || new Date().toISOString(),
+        cycleEndAt: body.cycleEndAt || null,
+        resetPolicy: body.resetPolicy || "calendar_month",
+        overagePolicy: body.overagePolicy || "throttle",
+        createdAt: new Date().toISOString(),
+      });
+      store.insert("auditLogs", {
+        id: `audit_pool_create_${Date.now()}`,
+        actorType: "user",
+        actorId: auth.userId,
+        action: "usage_pool.created",
+        resourceType: "usage_pool",
+        resourceId: pool.id,
+        correlationId,
+        createdAt: new Date().toISOString(),
+      });
+      return this.usagePools().find((item) => item.id === pool.id);
     },
     transitionPackage(packageId, action, correlationId) {
       const pkg = store.find("packages", packageId);
@@ -142,6 +237,48 @@ function createCatalogService(store, eventBus) {
     },
     suppliers() {
       return store.list("suppliers");
+    },
+    getSupplier(supplierId) {
+      const supplier = store.find("suppliers", supplierId);
+      if (!supplier) {
+        const error = new Error("Supplier not found");
+        error.statusCode = 404;
+        error.code = "RESOURCE_NOT_FOUND";
+        throw error;
+      }
+      return {
+        ...supplier,
+        packages: store.list("packages").filter((pkg) => pkg.supplierId === supplierId),
+        esimProfiles: store.list("esimProfiles").filter((profile) => profile.supplierId === supplierId),
+        sims: store.list("sims").filter((sim) => sim.supplierId === supplierId),
+      };
+    },
+    syncSupplier(supplierId, auth, correlationId) {
+      const supplier = store.find("suppliers", supplierId);
+      if (!supplier) {
+        const error = new Error("Supplier not found");
+        error.statusCode = 404;
+        error.code = "RESOURCE_NOT_FOUND";
+        throw error;
+      }
+      const now = new Date().toISOString();
+      const updated = store.update("suppliers", supplierId, {
+        status: supplier.status === "failed" ? "watch" : supplier.status,
+        lastSyncAt: now,
+        cdrDelayMinutes: Math.max(1, Number(supplier.cdrDelayMinutes || 30) - 1),
+      });
+      store.insert("auditLogs", {
+        id: `audit_supplier_sync_${Date.now()}`,
+        actorType: "user",
+        actorId: auth.userId,
+        action: "supplier.sync_products",
+        resourceType: "supplier",
+        resourceId: supplierId,
+        correlationId,
+        createdAt: now,
+      });
+      eventBus.publish("supplier.sync_products", "supplier", supplierId, { supplierCode: supplier.supplierCode }, correlationId);
+      return this.getSupplier(updated.id);
     },
     apiClients() {
       return store.list("apiClients").map((client) => ({

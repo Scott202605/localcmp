@@ -25,6 +25,12 @@ let sims = [
 
 let currentView = "dashboard";
 let selectedSim = sims[0];
+let selectedAccountId = null;
+let selectedAccountDetailId = null;
+let selectedUserId = null;
+let selectedPackageId = null;
+let selectedSupplierId = null;
+let currentScopeAccountId = localStorage.getItem("localcmp_scope_account_id") || "acc_root";
 let pendingAction = null;
 let pendingSimId = null;
 let isLoadingData = false;
@@ -52,6 +58,7 @@ let remoteData = {
   approvals: [],
   users: [],
   roles: [],
+  settings: null,
 };
 
 const main = document.querySelector("#main");
@@ -61,6 +68,8 @@ const loginScreen = document.querySelector("#loginScreen");
 const loginForm = document.querySelector("#loginForm");
 const loginError = document.querySelector("#loginError");
 const currentUserName = document.querySelector("#currentUserName");
+const accountScopeSearch = document.querySelector("#accountScopeSearch");
+const accountScopeOptions = document.querySelector("#accountScopeOptions");
 const confirmDialog = document.querySelector("#confirmDialog");
 const confirmMessage = document.querySelector("#confirmMessage");
 const typedConfirmWrap = document.querySelector("#typedConfirmWrap");
@@ -87,6 +96,7 @@ function authHeaders(extra = {}) {
     ...extra,
     ...(authToken() ? { Authorization: `Bearer ${authToken()}` } : {}),
     "X-Correlation-Id": `web_${Date.now()}`,
+    "X-Account-Scope-Id": currentScopeAccountId,
   };
 }
 
@@ -187,6 +197,7 @@ async function loadBackendData() {
       approvals,
       users,
       roles,
+      settings,
     ] = await Promise.all([
       apiGet("/health"),
       apiGet("/auth/context"),
@@ -210,9 +221,11 @@ async function loadBackendData() {
       apiGet("/approval-requests"),
       apiGet("/users"),
       apiGet("/roles"),
+      apiGet("/settings"),
     ]);
     const simOperations = await apiGet("/sim-operations");
-    remoteData = { health, authContext, dashboard, accounts, packages, entitlements, subscriptions, usagePools, esimProfiles, esimOperations, cdrs, invoices, batchJobs, simOperations, suppliers, apiClients, webhookSubscriptions, notificationDeliveries, auditLogs, approvals, users, roles };
+    remoteData = { health, authContext, dashboard, accounts, packages, entitlements, subscriptions, usagePools, esimProfiles, esimOperations, cdrs, invoices, batchJobs, simOperations, suppliers, apiClients, webhookSubscriptions, notificationDeliveries, auditLogs, approvals, users, roles, settings };
+    refreshAccountScopePicker();
     if (authContext?.user) currentUserName.textContent = authContext.user.displayName || authContext.user.email;
     sims = remoteSims.map(normalizeSim);
     selectedSim = sims.find((sim) => sim[0] === selectedSim?.[0]) || sims[0] || selectedSim;
@@ -326,6 +339,19 @@ function renderSimsCore(full = true) {
   `;
 }
 
+function simActionButton(action, label, className = "secondary-button") {
+  const allowed = {
+    activate: ["not_started", "failed"],
+    suspend: ["active"],
+    resume: ["suspended"],
+    terminate: ["active", "suspended", "failed"],
+  };
+  const serviceStatus = selectedSim?.[3] || "";
+  const isAllowed = allowed[action]?.includes(serviceStatus);
+  const reason = isAllowed ? "" : `Status ${serviceStatus} does not allow ${label}`;
+  return `<button class="${className}" data-action="${action}" data-sim-action-id="${selectedSim[6] || selectedSim[0]}" ${isAllowed ? "" : "disabled"} title="${esc(reason)}">${label}</button>`;
+}
+
 function renderSimDetail() {
   const latestOperation = remoteData.simOperations.find((operation) => operation.simId === selectedSim[6]) || null;
   return `
@@ -339,10 +365,10 @@ function renderSimDetail() {
         <div><dt>最近操作状态</dt><dd>${latestOperation ? `${latestOperation.operationType} · ${latestOperation.operationStatus}` : "暂无操作记录"}</dd></div>
       </dl>
       <div class="action-stack">
-        <button class="primary-button" data-action="activate" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">激活</button>
-        <button class="secondary-button" data-action="suspend" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">暂停服务</button>
-        <button class="secondary-button" data-action="resume" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">恢复服务</button>
-        <button class="danger-button" data-action="terminate" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">终止服务</button>
+        ${simActionButton("activate", "Activate", "primary-button")}
+        ${simActionButton("suspend", "Suspend")}
+        ${simActionButton("resume", "Resume")}
+        ${simActionButton("terminate", "Terminate", "danger-button")}
       </div>
       <p class="helper-text">危险操作会展示影响预览，并要求二次确认。</p>
     </aside>
@@ -459,6 +485,340 @@ const views = {
   }),
 };
 
+function optionList(items, selectedId, labelKey = "accountName") {
+  return items.map((item) => `<option value="${esc(item.id)}" ${item.id === selectedId ? "selected" : ""}>${esc(item[labelKey] || item.name || item.roleName || item.id)}</option>`).join("");
+}
+
+function accountLabel(account) {
+  if (!account) return "";
+  return `${account.accountName} (${account.accountCode || account.id})`;
+}
+
+function accountById(accountId) {
+  return remoteData.accounts.find((item) => item.id === accountId) || null;
+}
+
+function isDescendantOrSelf(accountId, ancestorId) {
+  if (!accountId || !ancestorId) return false;
+  if (accountId === ancestorId) return true;
+  let current = accountById(accountId);
+  while (current?.parentAccountId) {
+    if (current.parentAccountId === ancestorId) return true;
+    current = accountById(current.parentAccountId);
+  }
+  return false;
+}
+
+function scopedAccounts() {
+  return remoteData.accounts.filter((account) => isDescendantOrSelf(account.id, currentScopeAccountId));
+}
+
+function childCreatableAccounts() {
+  return scopedAccounts().filter((account) => ["platform", "reseller"].includes(account.accountType) && account.accountStatus === "active");
+}
+
+function canCreateUnderCurrentScope() {
+  const scope = accountById(currentScopeAccountId);
+  return scope && ["platform", "reseller"].includes(scope.accountType) && scope.accountStatus === "active";
+}
+
+function setScopeAccount(accountId) {
+  const next = accountById(accountId) || accountById("acc_root") || remoteData.accounts[0];
+  if (!next) return;
+  currentScopeAccountId = next.id;
+  localStorage.setItem("localcmp_scope_account_id", currentScopeAccountId);
+  selectedAccountId = currentScopeAccountId;
+  if (accountScopeSearch) accountScopeSearch.value = accountLabel(next);
+}
+
+function refreshAccountScopePicker() {
+  if (!accountScopeSearch || !accountScopeOptions || !remoteData.accounts.length) return;
+  if (!accountById(currentScopeAccountId)) currentScopeAccountId = "acc_root";
+  const current = accountById(currentScopeAccountId) || remoteData.accounts[0];
+  currentScopeAccountId = current.id;
+  accountScopeOptions.innerHTML = remoteData.accounts.map((account) => `<option value="${esc(accountLabel(account))}" data-account-id="${esc(account.id)}"></option>`).join("");
+  accountScopeSearch.value = accountLabel(current);
+}
+
+function selectedAccount() {
+  return remoteData.accounts.find((item) => item.id === selectedAccountId) || accountById(currentScopeAccountId) || remoteData.accounts[0] || null;
+}
+
+function selectedUser() {
+  return remoteData.users.find((item) => item.id === selectedUserId) || remoteData.users[0] || null;
+}
+
+function selectedPackage() {
+  return remoteData.packages.find((item) => item.id === selectedPackageId) || remoteData.packages[0] || null;
+}
+
+function selectedSupplier() {
+  return remoteData.suppliers.find((item) => item.id === selectedSupplierId) || remoteData.suppliers[0] || null;
+}
+
+function renderAccountsManaged() {
+  const account = selectedAccount();
+  const user = selectedUser();
+  const visibleAccounts = scopedAccounts();
+  const rows = visibleAccounts.map((item) => `
+    <tr tabindex="0" data-account-id="${esc(item.id)}" class="${account?.id === item.id ? "selected" : ""}">
+      <td>${esc(item.accountName)}</td><td>${esc(item.accountType)}</td><td>${status(item.accountStatus === "active" ? "active" : item.accountStatus === "suspended" ? "suspended" : "pending")}</td><td>${esc(item.riskStatus)}</td><td>${esc(item.billingStatus)}</td><td>${item.childCount || 0}</td>
+    </tr>`);
+  const scopedIds = new Set(visibleAccounts.map((item) => item.id));
+  const visibleUsers = remoteData.users.filter((item) => (item.accounts || []).some((accountLink) => scopedIds.has(accountLink.accountId)));
+  const userRows = visibleUsers.map((item) => `
+    <tr tabindex="0" data-user-id="${esc(item.id)}" class="${user?.id === item.id ? "selected" : ""}">
+      <td>${esc(item.displayName)}</td><td>${esc(item.email)}</td><td>${status(item.status === "active" ? "active" : "pending")}</td><td>${item.accounts?.length || 0}</td><td>${item.roles?.length || 0}</td>
+    </tr>`);
+  const canCreate = canCreateUnderCurrentScope() || childCreatableAccounts().length > 0;
+  return `
+    ${systemBanner()}
+    ${page("账户与客户", "当前账号作用域：${esc(accountLabel(accountById(currentScopeAccountId)))}。仅展示当前账户及下级账户数据。", `<button class="secondary-button" data-view-target="userCreate">创建用户</button><button class="primary-button" data-view-target="accountCreate" ${canCreate ? "" : "disabled"} title="${canCreate ? "" : "Customer account cannot create child accounts"}">创建账户</button>`)}
+    <section class="panel">
+      <div class="panel-header"><div><h2>账户列表</h2><p>点击账户进入独立详情页，可查看更多公司、联系人、授权和下级信息。</p></div></div>
+      ${table(["账户", "类型", "状态", "风控", "账务", "下级"], rows)}
+    </section>
+    <section class="panel">
+      <div class="panel-header"><div><h2>用户列表</h2><p>点击用户查看账户授权与角色配置。</p></div></div>
+      ${table(["姓名", "邮箱", "状态", "账户授权", "角色"], userRows)}
+    </section>
+  `;
+}
+
+function renderAccountDetail() {
+  const account = accountById(selectedAccountDetailId) || selectedAccount();
+  if (!account) return `${systemBanner()}${page("账户详情", "暂无账户。", `<button class="secondary-button" data-view-target="accounts">返回</button>`)}`;
+  const children = remoteData.accounts.filter((item) => item.parentAccountId === account.id);
+  const users = remoteData.users.filter((item) => (item.accounts || []).some((link) => link.accountId === account.id));
+  const simsForAccount = remoteData.dashboard ? sims.filter((sim) => sim[1] === account.accountName) : [];
+  return `
+    ${systemBanner()}
+    ${page(`账户详情 - ${esc(account.accountName)}`, "公司资料、联系人、层级、用户授权、号码/eSIM 资源范围。", `<button class="secondary-button" data-view-target="accounts">返回账户列表</button><button class="primary-button" data-view-target="userCreate">创建用户</button>`)}
+    <section class="module-grid">
+      <article class="panel">
+        <div class="panel-header"><div><h2>基础资料</h2><p>独立详情页承载更完整的账户配置。</p></div></div>
+        <dl class="detail-list">
+          <div><dt>账户编码</dt><dd>${esc(account.accountCode)}</dd></div>
+          <div><dt>账户类型</dt><dd>${esc(account.accountType)}</dd></div>
+          <div><dt>状态</dt><dd>${esc(account.accountStatus)}</dd></div>
+          <div><dt>父账户</dt><dd>${esc(accountById(account.parentAccountId)?.accountName || "-")}</dd></div>
+          <div><dt>币种 / 时区</dt><dd>${esc(account.currency)} / ${esc(account.timezone)}</dd></div>
+          <div><dt>路径</dt><dd>${esc(account.path || "-")}</dd></div>
+        </dl>
+      </article>
+      <aside class="panel module-side">
+        <div class="panel-header"><div><h2>公司与联系人</h2><p>创建账户时采集的扩展信息。</p></div></div>
+        <dl class="detail-list">
+          <div><dt>公司名称</dt><dd>${esc(account.companyName || account.accountName)}</dd></div>
+          <div><dt>税号</dt><dd>${esc(account.taxId || "-")}</dd></div>
+          <div><dt>联系人</dt><dd>${esc(account.contactName || "-")}</dd></div>
+          <div><dt>联系人邮箱</dt><dd>${esc(account.contactEmail || "-")}</dd></div>
+          <div><dt>公司地址</dt><dd>${esc(account.companyAddress || "-")}</dd></div>
+        </dl>
+      </aside>
+    </section>
+    <section class="module-grid">
+      <article class="panel">
+        <div class="panel-header"><div><h2>下级账户</h2><p>customer 类型不会出现下级创建入口。</p></div></div>
+        ${table(["账户", "类型", "状态", "账务"], children.map((item) => `<tr tabindex="0" data-account-id="${esc(item.id)}"><td>${esc(item.accountName)}</td><td>${esc(item.accountType)}</td><td>${status(item.accountStatus === "active" ? "active" : "pending")}</td><td>${esc(item.billingStatus)}</td></tr>`))}
+      </article>
+      <article class="panel">
+        <div class="panel-header"><div><h2>绑定用户</h2><p>仅显示该账户上的授权用户。</p></div></div>
+        ${table(["姓名", "邮箱", "状态"], users.map((item) => `<tr tabindex="0" data-user-id="${esc(item.id)}"><td>${esc(item.displayName)}</td><td>${esc(item.email)}</td><td>${status(item.status === "active" ? "active" : "pending")}</td></tr>`))}
+      </article>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><div><h2>资源范围</h2><p>后续 SIM/eSIM 操作也应限定在当前账户及其下级账户范围内。</p></div></div>
+      ${table(["ICCID", "账户", "套餐", "状态", "本月用量"], simsForAccount.map((sim) => `<tr><td class="mono">${esc(sim[0])}</td><td>${esc(sim[1])}</td><td>${esc(sim[2])}</td><td>${status(sim[3])}</td><td>${esc(sim[4])}</td></tr>`))}
+    </section>
+  `;
+}
+
+function renderPackagesManaged() {
+  const pkg = selectedPackage();
+  const rows = remoteData.packages.map((item) => `
+    <tr tabindex="0" data-package-id="${esc(item.id)}" class="${pkg?.id === item.id ? "selected" : ""}">
+      <td>${esc(item.name)}</td><td>${esc(item.regionScope)}</td><td>${item.quotaGb} GB</td><td>${esc(item.billingStartType)}</td><td>${status(item.packageStatus === "active" ? "active" : item.packageStatus === "retired" ? "retired" : "pending")}</td><td>${item.entitlementCount || 0}</td>
+    </tr>`);
+  return `
+    ${systemBanner()}
+    ${page("套餐与流量池", "配置套餐、计费起始规则、共享流量池和账户授权。")}
+    <section class="module-grid wide-module">
+      <article class="panel">
+        <div class="panel-header"><div><h2>套餐列表</h2><p>点击套餐查看订阅、授权和流量池关系。</p></div></div>
+        ${table(["套餐", "地区", "流量", "周期", "状态", "授权账户"], rows)}
+      </article>
+      <aside class="panel module-side">
+        <div class="panel-header"><div><h2>套餐配置</h2><p>${pkg ? esc(pkg.name) : "暂无套餐"}</p></div></div>
+        ${pkg ? `<dl class="detail-list">
+          <div><dt>套餐编码</dt><dd>${esc(pkg.packageCode)}</dd></div>
+          <div><dt>订阅数</dt><dd>${pkg.subscriptionCount || 0}</dd></div>
+          <div><dt>是否流量池</dt><dd>${pkg.poolEnabled ? "支持" : "不支持"}</dd></div>
+          <div><dt>状态</dt><dd>${esc(pkg.packageStatus)}</dd></div>
+        </dl>` : ""}
+      </aside>
+    </section>
+    <section class="module-grid">
+      <article class="panel">
+        <div class="panel-header"><div><h2>创建套餐</h2><p>先创建 draft，后续可提交审核并发布。</p></div></div>
+        <form class="form-grid" id="packageCreateForm">
+          <label><span>套餐名称</span><input name="name" required placeholder="Global 10GB Monthly" /></label>
+          <label><span>套餐编码</span><input name="packageCode" required placeholder="GLOBAL-10GB-MONTHLY" /></label>
+          <label><span>地区</span><input name="regionScope" required value="Global" /></label>
+          <label><span>流量 GB</span><input name="quotaGb" type="number" min="0.1" step="0.1" required value="10" /></label>
+          <label><span>计费起点</span><select name="billingStartType"><option value="calendar_month">月初计费</option><option value="activation_day">开通日计费</option></select></label>
+          <label><span>流量池</span><select name="poolEnabled"><option value="false">不启用</option><option value="true">启用</option></select></label>
+          <div class="form-actions"><button class="primary-button" type="submit">创建套餐</button></div>
+        </form>
+      </article>
+      <article class="panel">
+        <div class="panel-header"><div><h2>创建流量池</h2><p>绑定账户和套餐，支持月初或开通日重置。</p></div></div>
+        <form class="form-grid" id="poolCreateForm">
+          <label><span>流量池名称</span><input name="name" required placeholder="FleetLink Global Pool" /></label>
+          <label><span>账户</span><select name="accountId">${optionList(scopedAccounts(), selectedAccount()?.id)}</select></label>
+          <label><span>套餐</span><select name="packageId">${optionList(remoteData.packages, pkg?.id, "name")}</select></label>
+          <label><span>容量 GB</span><input name="quotaGb" type="number" min="1" step="1" required value="100" /></label>
+          <label><span>重置策略</span><select name="resetPolicy"><option value="calendar_month">月初重置</option><option value="activation_day">开通日重置</option></select></label>
+          <label><span>超额策略</span><select name="overagePolicy"><option value="throttle">限速</option><option value="block">断网</option><option value="pay_as_you_go">按量</option></select></label>
+          <div class="form-actions"><button class="primary-button" type="submit">创建流量池</button></div>
+        </form>
+      </article>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><div><h2>流量池</h2><p>当前账户池与使用率。</p></div></div>
+      ${table(["流量池", "账户", "套餐", "配额", "已用", "策略"], remoteData.usagePools.map((pool) => `<tr><td>${esc(pool.name)}</td><td>${esc(pool.accountName)}</td><td>${esc(pool.packageName)}</td><td>${Math.round(pool.quotaBytes / 1024 / 1024 / 1024)} GB</td><td>${pool.usedPercent}%</td><td>${esc(pool.overagePolicy)}</td></tr>`))}
+    </section>
+  `;
+}
+
+function renderAccountCreate() {
+  const parents = childCreatableAccounts();
+  const defaultParent = parents.find((item) => item.id === currentScopeAccountId) || parents[0] || null;
+  return `
+    ${systemBanner()}
+    ${page("创建账户", "只能在当前账户或下级 reseller 账户下创建。customer 账户不能创建下级账户。", `<button class="secondary-button" data-view-target="accounts">返回账户列表</button>`)}
+    <section class="panel">
+      <div class="panel-header"><div><h2>账户资料</h2><p>公司、税务、联系人和地址信息用于账单、合同、对账和合规审计。</p></div></div>
+      ${parents.length ? `<form class="form-grid" id="accountCreateForm">
+        <label><span>账户名称</span><input name="accountName" required placeholder="FleetLink South" /></label>
+        <label><span>账户编码</span><input name="accountCode" required placeholder="FLEETLINK-SOUTH" /></label>
+        <label><span>账户类型</span><select name="accountType"><option value="customer">customer</option><option value="reseller">reseller</option></select></label>
+        <label><span>父账户</span><select name="parentAccountId">${optionList(parents, defaultParent?.id)}</select></label>
+        <label><span>公司名称</span><input name="companyName" required placeholder="FleetLink Technology Ltd." /></label>
+        <label><span>税号</span><input name="taxId" required placeholder="Tax ID / VAT No." /></label>
+        <label><span>联系人</span><input name="contactName" required placeholder="Jane Ops" /></label>
+        <label><span>联系人邮箱</span><input name="contactEmail" type="email" required placeholder="jane@example.com" /></label>
+        <label class="span-2"><span>公司地址</span><input name="companyAddress" required placeholder="Company registered address" /></label>
+        <label><span>币种</span><select name="currency"><option>CNY</option><option>USD</option><option>EUR</option></select></label>
+        <label><span>时区</span><input name="timezone" value="Asia/Shanghai" required /></label>
+        <div class="form-actions"><button class="primary-button" type="submit">提交创建</button></div>
+      </form>` : `<div class="empty-state"><strong>当前作用域不能创建下级账户</strong><p>请选择 platform 或 reseller 账户作用域后再创建。</p></div>`}
+    </section>
+  `;
+}
+
+function renderUserCreate() {
+  const accounts = scopedAccounts();
+  const defaultAccount = accounts.find((item) => item.id === currentScopeAccountId) || accounts[0] || null;
+  return `
+    ${systemBanner()}
+    ${page("创建用户", "只能为当前账户及其下级账户创建用户授权。", `<button class="secondary-button" data-view-target="accounts">返回账户列表</button>`)}
+    <section class="panel">
+      <div class="panel-header"><div><h2>用户资料与授权</h2><p>创建后绑定指定账户和角色，初始密码只显示一次。</p></div></div>
+      <form class="form-grid" id="userCreateForm">
+        <label><span>姓名</span><input name="displayName" required placeholder="Jane Ops" /></label>
+        <label><span>邮箱</span><input name="email" type="email" required placeholder="jane@example.com" /></label>
+        <label><span>手机号</span><input name="phone" inputmode="tel" /></label>
+        <label><span>绑定账户</span><select name="accountId">${optionList(accounts, defaultAccount?.id)}</select></label>
+        <label><span>角色</span><select name="roleId">${optionList(remoteData.roles, "role_viewer", "roleName")}</select></label>
+        <label><span>初始密码</span><input name="initialPassword" type="password" minlength="10" placeholder="留空使用默认强密码" /></label>
+        <div class="form-actions"><button class="primary-button" type="submit">提交创建</button></div>
+      </form>
+      ${lastTaskResult?.title === "用户已创建" ? `<div class="secret-box" role="status"><strong>${esc(lastTaskResult.title)}</strong><p>${esc(lastTaskResult.message)}</p></div>` : ""}
+    </section>
+  `;
+}
+
+function renderSuppliersManaged() {
+  const supplier = selectedSupplier();
+  const rows = remoteData.suppliers.map((item) => `
+    <tr tabindex="0" data-supplier-id="${esc(item.id)}" class="${supplier?.id === item.id ? "selected" : ""}">
+      <td>${esc(item.supplierName)}</td><td>${esc(item.supplierType)}</td><td>${status(item.status === "active" ? "active" : item.status === "failed" ? "failed" : "pending")}</td><td>${esc(item.successRate)}%</td><td>${esc(item.cdrDelayMinutes)}m</td><td>${esc(item.lastSyncAt || "-")}</td>
+    </tr>`);
+  return `
+    ${systemBanner()}
+    ${page("资源方", "对接流量资源方、eSIM/RSP 供应商、CDR 同步和 SLA 监控。", `<button class="primary-button" data-api-task="supplier-sync" data-supplier-id="${supplier?.id || ""}">同步当前资源方</button>`)}
+    <section class="module-grid">
+      <article class="panel">
+        <div class="panel-header"><div><h2>资源方列表</h2><p>点击资源方查看 API 与 CDR 健康信息。</p></div></div>
+        ${table(["资源方", "类型", "状态", "成功率", "CDR 延迟", "最后同步"], rows)}
+      </article>
+      <aside class="panel module-side">
+        <div class="panel-header"><div><h2>资源方配置</h2><p>${supplier ? esc(supplier.supplierName) : "暂无资源方"}</p></div></div>
+        ${supplier ? `<dl class="detail-list">
+          <div><dt>编码</dt><dd>${esc(supplier.supplierCode)}</dd></div>
+          <div><dt>类型</dt><dd>${esc(supplier.supplierType)}</dd></div>
+          <div><dt>SLA</dt><dd>API ${esc(supplier.successRate)}% / CDR ${esc(supplier.cdrDelayMinutes)}m</dd></div>
+          <div><dt>鉴权</dt><dd>Token/密钥仅显示掩码，真实值应在密钥管理器保存。</dd></div>
+        </dl>` : ""}
+      </aside>
+    </section>
+  `;
+}
+
+function renderSettingsManaged() {
+  const settings = remoteData.settings || {};
+  return `
+    ${systemBanner()}
+    ${page("Settings", "平台安全、SLA、账单、数据保留和外部集成配置。")}
+    <section class="panel">
+      <div class="panel-header"><div><h2>运行配置</h2><p>保存会写入后端设置并产生审计日志。</p></div></div>
+      <form class="form-grid" id="settingsForm">
+        <label><span>管理员 MFA</span><select name="mfaRequiredForAdmins"><option value="true" ${settings.security?.mfaRequiredForAdmins ? "selected" : ""}>强制</option><option value="false" ${settings.security?.mfaRequiredForAdmins === false ? "selected" : ""}>不强制</option></select></label>
+        <label><span>生产 HTTPS</span><select name="productionHttpsRequired"><option value="true" ${settings.security?.productionHttpsRequired ? "selected" : ""}>强制</option><option value="false" ${settings.security?.productionHttpsRequired === false ? "selected" : ""}>不强制</option></select></label>
+        <label><span>API SLA</span><input name="apiAvailability" value="${esc(settings.sla?.apiAvailability || "99.9%")}" required /></label>
+        <label><span>CDR 延迟分钟</span><input name="cdrDelayMinutes" type="number" min="1" value="${esc(settings.sla?.cdrDelayMinutes || 30)}" required /></label>
+        <label><span>CDR 保留天数</span><input name="cdrDays" type="number" min="30" value="${esc(settings.retention?.cdrDays || 730)}" required /></label>
+        <label><span>审计保留天数</span><input name="auditDays" type="number" min="90" value="${esc(settings.retention?.auditDays || 1095)}" required /></label>
+        <div class="form-actions"><button class="primary-button" type="submit">保存配置</button></div>
+      </form>
+    </section>
+  `;
+}
+
+function renderAuditManaged() {
+  const rows = remoteData.auditLogs.map((log) => `<tr><td>${esc(log.createdAt)}</td><td>${esc(log.actorId)}</td><td>${esc(log.action)}</td><td>${esc(log.resourceType || "-")}</td><td>${esc(log.resourceId || "-")}</td><td>${esc(log.correlationId || "-")}</td></tr>`);
+  return `
+    ${systemBanner()}
+    ${page("Audit Logs", "记录账户、用户、SIM/eSIM、套餐、账单、资源方和 API 操作。")}
+    <section class="module-grid">
+      <article class="panel">
+        <div class="panel-header"><div><h2>审计事件</h2><p>来自后端 /audit-logs API。</p></div></div>
+        ${table(["时间", "Actor", "Action", "类型", "资源", "Correlation ID"], rows)}
+      </article>
+      <aside class="panel module-side">
+        <div class="panel-header"><div><h2>导出审计</h2><p>生成导出任务，返回匹配行数和下载地址。</p></div></div>
+        <form class="form-grid compact-form" id="auditExportForm">
+          <label><span>Action 包含</span><input name="action" placeholder="sim / user / settings" /></label>
+          <label><span>资源类型</span><input name="resourceType" placeholder="sim, account, user" /></label>
+          <label><span>格式</span><select name="format"><option value="csv">CSV</option><option value="json">JSON</option></select></label>
+          <div class="form-actions"><button class="primary-button" type="submit">导出审计</button></div>
+        </form>
+        ${lastTaskResult ? `<div class="secret-box" role="status"><strong>${esc(lastTaskResult.title)}</strong><p>${esc(lastTaskResult.message)}</p></div>` : ""}
+      </aside>
+    </section>
+  `;
+}
+
+views.accounts = renderAccountsManaged;
+views.accountDetail = renderAccountDetail;
+views.accountCreate = renderAccountCreate;
+views.userCreate = renderUserCreate;
+views.packages = renderPackagesManaged;
+views.suppliers = renderSuppliersManaged;
+views.settings = renderSettingsManaged;
+views.audit = renderAuditManaged;
+
 function renderNav() {
   navList.innerHTML = navItems.map(([id, icon, label]) => `
     <button class="nav-item ${id === currentView ? "active" : ""}" type="button" data-view="${id}" ${id === currentView ? 'aria-current="page"' : ""}>
@@ -519,11 +879,201 @@ function bindViewEvents() {
       }
     });
   });
+  main.querySelectorAll("[data-account-id]").forEach((row) => {
+    const select = () => {
+      selectedAccountId = row.dataset.accountId;
+      selectedAccountDetailId = row.dataset.accountId;
+      switchView("accountDetail");
+      showToast("已打开账户详情");
+    };
+    row.addEventListener("click", select);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        select();
+      }
+    });
+  });
+  main.querySelectorAll("[data-user-id]").forEach((row) => {
+    const select = () => {
+      selectedUserId = row.dataset.userId;
+      render();
+      showToast("已加载用户配置");
+    };
+    row.addEventListener("click", select);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        select();
+      }
+    });
+  });
+  main.querySelectorAll("[data-package-id]").forEach((row) => {
+    const select = () => {
+      selectedPackageId = row.dataset.packageId;
+      render();
+      showToast("已加载套餐配置");
+    };
+    row.addEventListener("click", select);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        select();
+      }
+    });
+  });
+  main.querySelectorAll("[data-supplier-id]").forEach((row) => {
+    const select = () => {
+      selectedSupplierId = row.dataset.supplierId;
+      render();
+      showToast("已加载资源方配置");
+    };
+    row.addEventListener("click", select);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        select();
+      }
+    });
+  });
+  bindManagedForms();
   const filterForm = main.querySelector("#simFilterForm");
   if (filterForm) {
     filterForm.addEventListener("submit", (event) => {
       event.preventDefault();
       showToast("筛选已应用。");
+    });
+  }
+}
+
+function formPayload(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+function toBoolean(value) {
+  return value === true || value === "true";
+}
+
+function bindManagedForms() {
+  const accountForm = main.querySelector("#accountCreateForm");
+  if (accountForm) {
+    accountForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = formPayload(accountForm);
+        const account = await apiPost("/accounts", payload);
+        selectedAccountId = account.id;
+        selectedAccountDetailId = account.id;
+        currentScopeAccountId = account.id;
+        localStorage.setItem("localcmp_scope_account_id", account.id);
+        showToast(`账户已创建：${account.accountName}`);
+        await loadBackendData();
+        switchView("accountDetail");
+      } catch (error) {
+        showToast(`账户创建失败：${error.message}`);
+      }
+    });
+  }
+  const userForm = main.querySelector("#userCreateForm");
+  if (userForm) {
+    userForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = formPayload(userForm);
+        if (!payload.initialPassword) delete payload.initialPassword;
+        const user = await apiPost("/users", payload);
+        selectedUserId = user.id;
+        lastTaskResult = {
+          title: "用户已创建",
+          message: `初始密码只返回一次：${user.initialPassword}`,
+        };
+        showToast(`用户已创建：${user.displayName}`);
+        await loadBackendData();
+        render();
+      } catch (error) {
+        showToast(`用户创建失败：${error.message}`);
+      }
+    });
+  }
+  const packageForm = main.querySelector("#packageCreateForm");
+  if (packageForm) {
+    packageForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = formPayload(packageForm);
+        payload.quotaGb = Number(payload.quotaGb);
+        payload.poolEnabled = toBoolean(payload.poolEnabled);
+        const pkg = await apiPost("/packages", payload);
+        selectedPackageId = pkg.id;
+        showToast(`套餐已创建：${pkg.name}`);
+        await loadBackendData();
+        render();
+      } catch (error) {
+        showToast(`套餐创建失败：${error.message}`);
+      }
+    });
+  }
+  const poolForm = main.querySelector("#poolCreateForm");
+  if (poolForm) {
+    poolForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = formPayload(poolForm);
+        payload.quotaGb = Number(payload.quotaGb);
+        const pool = await apiPost("/usage-pools", payload);
+        showToast(`流量池已创建：${pool.name}`);
+        await loadBackendData();
+        render();
+      } catch (error) {
+        showToast(`流量池创建失败：${error.message}`);
+      }
+    });
+  }
+  const settingsForm = main.querySelector("#settingsForm");
+  if (settingsForm) {
+    settingsForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = formPayload(settingsForm);
+        await apiPost("/settings", {
+          security: {
+            mfaRequiredForAdmins: toBoolean(payload.mfaRequiredForAdmins),
+            productionHttpsRequired: toBoolean(payload.productionHttpsRequired),
+          },
+          sla: {
+            apiAvailability: payload.apiAvailability,
+            cdrDelayMinutes: Number(payload.cdrDelayMinutes),
+          },
+          retention: {
+            cdrDays: Number(payload.cdrDays),
+            auditDays: Number(payload.auditDays),
+          },
+        });
+        showToast("配置已保存");
+        await loadBackendData();
+        render();
+      } catch (error) {
+        showToast(`配置保存失败：${error.message}`);
+      }
+    });
+  }
+  const auditForm = main.querySelector("#auditExportForm");
+  if (auditForm) {
+    auditForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = formPayload(auditForm);
+        const result = await apiPost("/audit-logs/export", payload);
+        lastTaskResult = {
+          title: "审计导出已完成",
+          message: `${result.recordCount} 条记录，下载地址：${result.downloadUrl}`,
+        };
+        showToast(`审计导出完成：${result.recordCount} 条`);
+        await loadBackendData();
+        render();
+      } catch (error) {
+        showToast(`审计导出失败：${error.message}`);
+      }
     });
   }
 }
@@ -623,6 +1173,13 @@ async function runApiTask(task) {
       };
       showToast(`Webhook 测试已入队：${result.status}`);
     }
+    if (task === "supplier-sync") {
+      const supplier = selectedSupplier();
+      if (!supplier) throw new Error("暂无可同步资源方");
+      const result = await apiPost(`/suppliers/${encodeURIComponent(supplier.id)}/sync-products`, {});
+      selectedSupplierId = result.id;
+      showToast(`资源方已同步：${result.supplierName}`);
+    }
     await loadBackendData();
     render();
   } catch (error) {
@@ -641,6 +1198,31 @@ document.querySelector(".mobile-menu").addEventListener("click", () => {
   sidebar.classList.toggle("open");
   document.querySelector(".mobile-menu").setAttribute("aria-expanded", String(sidebar.classList.contains("open")));
 });
+
+if (accountScopeSearch) {
+  accountScopeSearch.addEventListener("change", () => {
+    const value = accountScopeSearch.value.trim().toLowerCase();
+    const account = remoteData.accounts.find((item) => accountLabel(item).toLowerCase() === value || item.accountName.toLowerCase() === value || item.accountCode?.toLowerCase() === value);
+    if (!account) {
+      refreshAccountScopePicker();
+      showToast("未找到匹配账户，请从自动补全列表选择。");
+      return;
+    }
+    setScopeAccount(account.id);
+    selectedAccountId = account.id;
+    selectedAccountDetailId = account.id;
+    render();
+    showToast(`已切换账户作用域：${account.accountName}`);
+  });
+  accountScopeSearch.addEventListener("input", () => {
+    const value = accountScopeSearch.value.trim().toLowerCase();
+    const exact = remoteData.accounts.find((item) => accountLabel(item).toLowerCase() === value);
+    if (exact) {
+      setScopeAccount(exact.id);
+      render();
+    }
+  });
+}
 
 confirmDialog.addEventListener("close", () => {
   if (confirmDialog.returnValue !== "confirm") return;
