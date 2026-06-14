@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'" />
+    <title>LocalCMP | IoT Connectivity Management</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳转到主要内容</a>
+
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar-panel" aria-label="主导航">
+        <div class="brand" aria-label="LocalCMP">
+          <span class="brand-mark" aria-hidden="true">LC</span>
+          <div>
+            <strong>LocalCMP</strong>
+            <span>IoT Control Center</span>
+          </div>
+        </div>
+
+        <nav class="nav-list" id="navList" aria-label="模块导航"></nav>
+
+        <div class="sidebar-footer">
+          <span class="security-dot" aria-hidden="true"></span>
+          <span>Production requires HTTPS</span>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <button class="mobile-menu" type="button" aria-label="打开导航" aria-controls="sidebar-panel" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+
+          <div class="account-scope">
+            <label for="accountScope">账户范围</label>
+            <select id="accountScope">
+              <option>Platform / All accounts</option>
+              <option>Reseller East / subtree</option>
+              <option>Customer: FleetLink CN</option>
+            </select>
+          </div>
+
+          <form class="global-search" role="search">
+            <label class="sr-only" for="globalSearch">搜索 ICCID、eID、账户或任务</label>
+            <input id="globalSearch" type="search" placeholder="搜索 ICCID、eID、账户或任务" autocomplete="off" />
+          </form>
+
+          <button class="icon-button" type="button" aria-label="查看通知">
+            <span aria-hidden="true">!</span>
+          </button>
+          <button class="user-menu" type="button" aria-label="用户菜单">
+            <span class="avatar" aria-hidden="true">SC</span>
+            <span>Scott</span>
+          </button>
+        </header>
+
+        <main id="main" class="main-content" tabindex="-1"></main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <section class="cookie-banner" id="cookieBanner" aria-label="Cookie 与隐私授权">
+      <div>
+        <strong>隐私与 Cookie</strong>
+        <p>我们使用必要 Cookie 保持登录安全，并可选收集匿名体验指标。继续前请查看隐私政策并选择授权。</p>
+      </div>
+      <div class="cookie-actions">
+        <a href="./privacy.html" aria-label="查看隐私政策">隐私政策</a>
+        <button class="secondary-button" type="button" id="rejectCookies">仅必要</button>
+        <button class="primary-button" type="button" id="acceptCookies">同意</button>
+      </div>
+    </section>
+
+    <dialog class="confirm-dialog" id="confirmDialog" aria-labelledby="confirmTitle">
+      <form method="dialog">
+        <h2 id="confirmTitle">确认危险操作</h2>
+        <p id="confirmMessage">该操作需要确认。</p>
+        <label id="typedConfirmWrap" class="typed-confirm hidden">
+          <span>输入 TERMINATE 确认</span>
+          <input id="typedConfirm" type="text" autocomplete="off" />
+          <small class="field-error" id="typedConfirmError"></small>
+        </label>
+        <div class="dialog-actions">
+          <button class="secondary-button" value="cancel" type="submit">取消</button>
+          <button class="danger-button" id="confirmAction" value="confirm" type="submit">确认执行</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
