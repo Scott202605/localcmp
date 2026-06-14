@@ -13,7 +13,9 @@ const navItems = [
   ["audit", "A", "Audit Logs"],
 ];
 
-const sims = [
+const API_BASE = window.location.protocol === "file:" ? "http://localhost:8080/api/v1" : "/api/v1";
+
+let sims = [
   ["8986041020250001842", "FleetLink CN", "Global 5GB Monthly", "active", "4.2 GB", "Resume succeeded"],
   ["8986041020250001916", "Reseller East / EVBox", "APAC Pool 500GB", "suspended", "312 MB", "Suspend by credit hold"],
   ["8986041020250002068", "MedTrack Europe", "EU 1GB Activation Day", "failed", "0 MB", "Activation failed"],
@@ -23,6 +25,7 @@ const sims = [
 let currentView = "dashboard";
 let selectedSim = sims[0];
 let pendingAction = null;
+let pendingSimId = null;
 
 const main = document.querySelector("#main");
 const navList = document.querySelector("#navList");
@@ -42,6 +45,53 @@ function showToast(message) {
   toastEl.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toastEl.classList.remove("show"), 2800);
+}
+
+async function apiGet(path) {
+  const response = await fetch(`${API_BASE}${path}`, { headers: { "X-Correlation-Id": `web_${Date.now()}` } });
+  if (!response.ok) throw new Error(`API ${path} failed`);
+  const payload = await response.json();
+  return payload.data;
+}
+
+async function apiPost(path, body = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `idem_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      "X-Correlation-Id": `web_${Date.now()}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error?.message || "API request failed");
+  }
+  const payload = await response.json();
+  return payload.data;
+}
+
+function normalizeSim(sim) {
+  return [
+    sim.iccid,
+    sim.accountName || sim.account || "-",
+    sim.packageName || sim.package || "-",
+    sim.serviceStatus || sim.status,
+    `${sim.usageMonthGb ?? sim.usage ?? 0} GB`,
+    sim.lastOperation || "-",
+    sim.id,
+  ];
+}
+
+async function loadBackendData() {
+  try {
+    const remoteSims = await apiGet("/sims");
+    sims = remoteSims.map(normalizeSim);
+    selectedSim = sims.find((sim) => sim[0] === selectedSim?.[0]) || sims[0] || selectedSim;
+  } catch (error) {
+    showToast("后端未连接，当前使用前端样例数据。");
+  }
 }
 
 function esc(value) {
@@ -144,10 +194,10 @@ function renderSimDetail() {
         <div><dt>账单影响</dt><dd>${selectedSim[3] === "active" ? "本周期继续计费" : "需重新校验信用与套餐"}</dd></div>
       </dl>
       <div class="action-stack">
-        <button class="primary-button" data-action="activate">激活</button>
-        <button class="secondary-button" data-action="suspend">暂停服务</button>
-        <button class="secondary-button" data-action="resume">恢复服务</button>
-        <button class="danger-button" data-action="terminate">终止服务</button>
+        <button class="primary-button" data-action="activate" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">激活</button>
+        <button class="secondary-button" data-action="suspend" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">暂停服务</button>
+        <button class="secondary-button" data-action="resume" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">恢复服务</button>
+        <button class="danger-button" data-action="terminate" data-sim-action-id="${selectedSim[6] || selectedSim[0]}">终止服务</button>
       </div>
       <p class="helper-text">危险操作会展示影响预览，并要求二次确认。</p>
     </aside>
@@ -278,8 +328,9 @@ function switchView(view) {
   document.querySelector(".mobile-menu").setAttribute("aria-expanded", "false");
 }
 
-function openConfirm(action) {
+function openConfirm(action, simId) {
   pendingAction = action;
+  pendingSimId = simId || selectedSim?.[6] || selectedSim?.[0];
   typedConfirm.value = "";
   typedConfirmError.textContent = "";
   typedConfirmWrap.classList.toggle("hidden", action !== "terminate");
@@ -296,7 +347,7 @@ function bindViewEvents() {
     button.addEventListener("click", () => showToast(button.dataset.toast));
   });
   main.querySelectorAll("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => openConfirm(button.dataset.action));
+    button.addEventListener("click", () => openConfirm(button.dataset.action, button.dataset.simActionId));
   });
   main.querySelectorAll("[data-sim]").forEach((row) => {
     const select = () => {
@@ -340,7 +391,16 @@ confirmDialog.addEventListener("close", () => {
     confirmDialog.showModal();
     return;
   }
-  showToast(`操作已受理，Operation ID：op_${Math.random().toString(16).slice(2, 10)}`);
+  const action = pendingAction;
+  const simId = pendingSimId;
+  showToast("操作提交中...");
+  apiPost(`/sims/${encodeURIComponent(simId)}/${encodeURIComponent(action)}`, {})
+    .then(async (result) => {
+      showToast(`操作已受理，Operation ID：${result.operationId}`);
+      await loadBackendData();
+      render();
+    })
+    .catch((error) => showToast(`操作未提交：${error.message}`));
 });
 
 document.querySelector("#acceptCookies").addEventListener("click", () => {
@@ -353,4 +413,4 @@ document.querySelector("#rejectCookies").addEventListener("click", () => {
   showToast("Cookie 偏好已保存：仅必要 Cookie。");
 });
 
-render();
+loadBackendData().finally(render);

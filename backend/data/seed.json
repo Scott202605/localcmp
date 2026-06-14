@@ -1,0 +1,295 @@
+{
+  "accounts": [
+    {
+      "id": "acc_root",
+      "parentAccountId": null,
+      "accountCode": "PLATFORM",
+      "accountName": "Platform",
+      "accountType": "platform",
+      "accountStatus": "active",
+      "riskStatus": "normal",
+      "billingStatus": "current",
+      "currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "path": "/platform"
+    },
+    {
+      "id": "acc_reseller_east",
+      "parentAccountId": "acc_root",
+      "accountCode": "RESELLER-EAST",
+      "accountName": "Reseller East",
+      "accountType": "reseller",
+      "accountStatus": "active",
+      "riskStatus": "normal",
+      "billingStatus": "current",
+      "currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "path": "/platform/reseller-east"
+    },
+    {
+      "id": "acc_fleetlink",
+      "parentAccountId": "acc_reseller_east",
+      "accountCode": "FLEETLINK-CN",
+      "accountName": "FleetLink CN",
+      "accountType": "customer",
+      "accountStatus": "active",
+      "riskStatus": "normal",
+      "billingStatus": "current",
+      "currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "path": "/platform/reseller-east/fleetlink-cn"
+    },
+    {
+      "id": "acc_evbox",
+      "parentAccountId": "acc_reseller_east",
+      "accountCode": "EVBOX-TRIAL",
+      "accountName": "EVBox Trial",
+      "accountType": "customer",
+      "accountStatus": "suspended",
+      "riskStatus": "credit_hold",
+      "billingStatus": "overdue",
+      "currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "path": "/platform/reseller-east/evbox-trial"
+    }
+  ],
+  "suppliers": [
+    {
+      "id": "sup_global_roam",
+      "supplierCode": "GLOBAL-ROAM",
+      "supplierName": "Global Roam Hub",
+      "supplierType": "aggregator",
+      "status": "active",
+      "successRate": 99.3,
+      "cdrDelayMinutes": 8,
+      "lastSyncAt": "2026-06-14T09:10:00+08:00"
+    },
+    {
+      "id": "sup_asia_esim",
+      "supplierCode": "ASIA-ESIM",
+      "supplierName": "Asia eSIM Bridge",
+      "supplierType": "esim_provider",
+      "status": "watch",
+      "successRate": 97.1,
+      "cdrDelayMinutes": 23,
+      "lastSyncAt": "2026-06-14T09:02:00+08:00"
+    },
+    {
+      "id": "sup_eu_pool",
+      "supplierCode": "EU-DATA",
+      "supplierName": "EU Data Pool",
+      "supplierType": "mvno",
+      "status": "failed",
+      "successRate": 82,
+      "cdrDelayMinutes": 41,
+      "lastSyncAt": "2026-06-14T08:48:00+08:00"
+    }
+  ],
+  "packages": [
+    {
+      "id": "pkg_global_5gb",
+      "packageCode": "GLOBAL-5GB-MONTHLY",
+      "name": "Global 5GB Monthly",
+      "packageType": "data",
+      "packageStatus": "active",
+      "regionScope": "Global",
+      "quotaBytes": 5368709120,
+      "billingStartType": "calendar_month",
+      "poolEnabled": false,
+      "authorizedAccounts": 128
+    },
+    {
+      "id": "pkg_apac_pool",
+      "packageCode": "APAC-POOL-500GB",
+      "name": "APAC Pool 500GB",
+      "packageType": "data",
+      "packageStatus": "active",
+      "regionScope": "APAC",
+      "quotaBytes": 536870912000,
+      "billingStartType": "activation_day",
+      "poolEnabled": true,
+      "authorizedAccounts": 42
+    },
+    {
+      "id": "pkg_legacy_apac",
+      "packageCode": "LEGACY-APAC-500MB",
+      "name": "Legacy APAC 500MB",
+      "packageType": "data",
+      "packageStatus": "retired",
+      "regionScope": "APAC",
+      "quotaBytes": 524288000,
+      "billingStartType": "calendar_month",
+      "poolEnabled": false,
+      "authorizedAccounts": 8
+    }
+  ],
+  "sims": [
+    {
+      "id": "sim_1842",
+      "accountId": "acc_fleetlink",
+      "supplierId": "sup_global_roam",
+      "iccid": "8986041020250001842",
+      "imsi": "460001234560001",
+      "msisdn": "+8613910001842",
+      "eid": "890490320000000000001842",
+      "simType": "esim_profile",
+      "inventoryStatus": "assigned",
+      "serviceStatus": "active",
+      "packageId": "pkg_global_5gb",
+      "usageMonthBytes": 4509715660,
+      "lastOperation": "Resume succeeded"
+    },
+    {
+      "id": "sim_1916",
+      "accountId": "acc_evbox",
+      "supplierId": "sup_asia_esim",
+      "iccid": "8986041020250001916",
+      "imsi": "460001234560002",
+      "msisdn": "+8613910001916",
+      "eid": "890490320000000000001916",
+      "simType": "physical",
+      "inventoryStatus": "assigned",
+      "serviceStatus": "suspended",
+      "serviceStatusReason": "credit_hold",
+      "packageId": "pkg_apac_pool",
+      "usageMonthBytes": 327155712,
+      "lastOperation": "Suspend by credit hold"
+    },
+    {
+      "id": "sim_2068",
+      "accountId": "acc_fleetlink",
+      "supplierId": "sup_eu_pool",
+      "iccid": "8986041020250002068",
+      "imsi": "460001234560003",
+      "msisdn": "+8613910002068",
+      "eid": "890490320000000000002068",
+      "simType": "esim_profile",
+      "inventoryStatus": "assigned",
+      "serviceStatus": "failed",
+      "serviceStatusReason": "activation_failed",
+      "packageId": "pkg_global_5gb",
+      "usageMonthBytes": 0,
+      "lastOperation": "Activation failed"
+    }
+  ],
+  "esimProfiles": [
+    {
+      "id": "profile_1842",
+      "supplierId": "sup_asia_esim",
+      "accountId": "acc_fleetlink",
+      "iccid": "89883070000012345678",
+      "eid": "890490320000000000001842",
+      "profileState": "enabled",
+      "rspMode": "sgp32",
+      "lastOperation": "Enable succeeded"
+    },
+    {
+      "id": "profile_stock_01",
+      "supplierId": "sup_global_roam",
+      "accountId": null,
+      "iccid": "89883070000012345679",
+      "eid": null,
+      "profileState": "available",
+      "rspMode": "sgp22",
+      "lastOperation": "Ready"
+    }
+  ],
+  "usageCdrs": [
+    {
+      "id": "cdr_001",
+      "simId": "sim_1842",
+      "iccid": "8986041020250001842",
+      "country": "DE",
+      "operatorName": "Telefónica",
+      "totalBytes": 85983232,
+      "amount": 42,
+      "currency": "CNY",
+      "startTime": "2026-06-14T09:21:00+08:00"
+    },
+    {
+      "id": "cdr_002",
+      "simId": "sim_1916",
+      "iccid": "8986041020250001916",
+      "country": "CN",
+      "operatorName": "China Mobile",
+      "totalBytes": 134217728,
+      "amount": 31,
+      "currency": "CNY",
+      "startTime": "2026-06-14T09:18:00+08:00"
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv_0012",
+      "accountId": "acc_fleetlink",
+      "invoiceNo": "INV-202606-0012",
+      "period": "2026-06",
+      "status": "preview",
+      "totalAmount": 12840000,
+      "currency": "CNY",
+      "dueAt": "2026-07-15"
+    },
+    {
+      "id": "inv_0013",
+      "accountId": "acc_evbox",
+      "invoiceNo": "INV-202606-0013",
+      "period": "2026-06",
+      "status": "overdue",
+      "totalAmount": 982000,
+      "currency": "CNY",
+      "dueAt": "2026-06-10"
+    }
+  ],
+  "batchJobs": [
+    {
+      "id": "job_9021",
+      "jobType": "package_change",
+      "status": "waiting_approval",
+      "totalCount": 86,
+      "successCount": 0,
+      "failedCount": 0,
+      "createdBy": "scott"
+    },
+    {
+      "id": "job_9018",
+      "jobType": "esim_operation",
+      "status": "completed",
+      "totalCount": 420,
+      "successCount": 401,
+      "failedCount": 19,
+      "createdBy": "system"
+    }
+  ],
+  "apiClients": [
+    {
+      "id": "client_fleetlink_prod",
+      "accountId": "acc_fleetlink",
+      "clientName": "fleetlink-prod",
+      "scopes": ["sim.read", "sim.operate", "usage.read"],
+      "status": "active",
+      "lastUsedAt": "2026-06-14T09:40:00+08:00"
+    },
+    {
+      "id": "client_evbox_test",
+      "accountId": "acc_evbox",
+      "clientName": "evbox-test",
+      "scopes": ["usage.read"],
+      "status": "suspended",
+      "lastUsedAt": "2026-06-11T11:30:00+08:00"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "audit_001",
+      "actorType": "user",
+      "actorId": "scott",
+      "action": "sim.terminate.preview",
+      "resourceType": "sim",
+      "resourceId": "sim_1842",
+      "ipAddress": "10.0.2.18",
+      "correlationId": "corr_8f21",
+      "createdAt": "2026-06-14T09:42:00+08:00"
+    }
+  ],
+  "outboxEvents": []
+}

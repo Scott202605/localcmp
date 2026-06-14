@@ -1,0 +1,10 @@
+{
+  "name": "localcmp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LocalCMP modular monolith prototype",
+  "scripts": {
+    "start": "node backend/src/server.js",
+    "check": "node --check backend/src/server.js && node --check frontend/app.js"
+  }
+}
